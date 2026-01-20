@@ -3,15 +3,14 @@ import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
 
-# [cite_start]1. 차량 및 제약 조건 설정 [cite: 1]
+# 1. 차량 및 제약 조건 설정
 TRUCK_SPECS = {
     "11톤": {"w": 2350, "l": 9000, "h": 2300, "cap": 13000},
     "5톤": {"w": 2350, "l": 6200, "h": 2100, "cap": 7000}
 }
-MAX_STACK_H = 1300  # 사용자 요청: 최대 적재 높이 1.3m
-MAX_STACK_COUNT = 4 # 사용자 요청: 최대 4단 적재
+MAX_STACK_H = 1300  
+MAX_STACK_COUNT = 4 
 
-# 3D 박스 그리기 함수
 def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
     fig.add_trace(go.Mesh3d(
         x=[x0, x0+l, x0+l, x0, x0, x0+l, x0+l, x0],
@@ -23,50 +22,51 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
         opacity=0.6, color=color, name=f"Box {name}"
     ))
 
-# 수정된 적재 알고리즘 부분
 def calculate_packing(box_df, fleet):
-    # 엑셀의 열 이름을 대소문자 구분 없이 자동으로 매칭합니다.
-    col_map = {col.lower(): col for col in box_df.columns}
+    # 열 이름 자동 매칭 로직 보강 (IndexError 방지)
+    cols = [str(c).lower() for c in box_df.columns]
     
-    # ID, W, H, L, Weight 중 하나라도 맞으면 해당 데이터를 사용합니다.
-    target_l = col_map.get('l', col_map.get('length', col_map.get('길이', box_df.columns[0])))
-    target_w = col_map.get('w', col_map.get('width', col_map.get('폭', box_df.columns[1])))
-    target_h = col_map.get('h', col_map.get('height', col_map.get('높이', box_df.columns[2])))
-    target_weight = col_map.get('weight', col_map.get('중량', col_map.get('무게', box_df.columns[3])))
-    target_id = col_map.get('id', col_map.get('박스번호', col_map.get('번호', box_df.columns[4] if len(box_df.columns)>4 else box_df.columns[0])))
+    def get_col(targets, default_idx):
+        for i, col in enumerate(cols):
+            if any(t in col for t in targets):
+                return box_df.columns[i]
+        return box_df.columns[default_idx] if len(box_df.columns) > default_idx else box_df.columns[0]
 
-    # 데이터를 코드용 표준 이름으로 변경
-    box_df = box_df.rename(columns={
-        target_l: 'l', target_w: 'w', target_h: 'h', 
-        target_weight: 'weight', target_id: 'id'
-    })
+    target_l = get_col(['l', '길이', 'length'], 3)
+    target_w = get_col(['w', '폭', 'width'], 1)
+    target_h = get_col(['h', '높이', 'height'], 2)
+    target_weight = get_col(['weight', '중량', '무게', 'gross'], 2)
+    target_id = get_col(['id', '박스', '번호', 'no'], 0)
 
-    pending = box_df.to_dict('records')
-    # 길이('l') 기준으로 정렬
+    # 안전하게 데이터 변환
+    new_df = pd.DataFrame()
+    new_df['l'] = pd.to_numeric(box_df[target_l], errors='coerce').fillna(0)
+    new_df['w'] = pd.to_numeric(box_df[target_w], errors='coerce').fillna(0)
+    new_df['h'] = pd.to_numeric(box_df[target_h], errors='coerce').fillna(0)
+    new_df['weight'] = pd.to_numeric(box_df[target_weight], errors='coerce').fillna(0)
+    new_df['id'] = box_df[target_id].astype(str)
+
+    pending = new_df.to_dict('records')
     pending = sorted(pending, key=lambda x: x['l'], reverse=True)
+    
     results = []
-    # (이후 코드는 동일합니다...)
     for t_name in fleet:
         spec = TRUCK_SPECS[t_name]
         truck_res = {"name": t_name, "boxes": [], "weight": 0}
-        curr_x, curr_y = 0, 0
-        rem_w = spec['w']
+        curr_x, rem_w = 0, spec['w']
         
         while pending and rem_w > 0:
-            lane_w = 0
-            curr_y = 0
+            lane_w, curr_y = 0, 0
             while pending and curr_y < spec['l']:
-                # 한 지점에 쌓기 (Stacking)
-                stack_h = 0
-                stack_count = 0
+                stack_h, stack_count = 0, 0
+                temp_stack = []
                 while pending and stack_count < MAX_STACK_COUNT:
                     b = pending[0]
                     if b['w'] <= rem_w and curr_y + b['l'] <= spec['l'] and \
                        stack_h + b['h'] <= MAX_STACK_H and \
                        truck_res['weight'] + b['weight'] <= spec['cap']:
-                        
                         b['pos'] = [curr_y, spec['w'] - rem_w, stack_h]
-                        truck_res['boxes'].append(b)
+                        temp_stack.append(b)
                         truck_res['weight'] += b['weight']
                         stack_h += b['h']
                         stack_count += 1
@@ -74,58 +74,40 @@ def calculate_packing(box_df, fleet):
                         pending.pop(0)
                     else: break
                 
-                if stack_count > 0:
-                    curr_y += truck_res['boxes'][-1]['l']
+                if temp_stack:
+                    truck_res['boxes'].extend(temp_stack)
+                    curr_y += max([bx['l'] for bx in temp_stack])
                 else: break
-            
-            if lane_w > 0:
-                rem_w -= lane_w
+            if lane_w > 0: rem_w -= lane_w
             else: break
         results.append(truck_res)
     return results, pending
 
-# --- 웹 화면 구성 ---
+# --- 웹 화면 ---
 st.set_page_config(layout="wide")
 st.title("📦 3D 차량 적재 최적화 시스템")
 
-# [cite_start]파일 업로드 (xaic.docx 기반 데이터 입력 가정) [cite: 2]
 uploaded_file = st.sidebar.file_uploader("박스 정보 엑셀 업로드", type=['xlsx', 'csv'])
 
-# 샘플 데이터 생성 (파일 없을 시)
-if not uploaded_file:
-    st.info("파일을 업로드하면 실제 데이터를 계산합니다. 현재는 샘플 데이터로 시뮬레이션 중입니다.")
-    # [cite_start]제공해주신 박스 정보 예시 [cite: 2]
-    sample_data = {
-        'id': ['01', '13', '07', '48'],
-        'w': [350, 500, 340, 570],
-        'h': [230, 370, 250, 530],
-        'l': [7700, 8700, 6700, 7300],
-        'weight': [227, 956, 259, 465]
-    }
-    df = pd.DataFrame(sample_data)
-else:
-    df = pd.read_excel(uploaded_file) # 실제 운영 시 전처리 필요
-
-fleet = ["11톤", "5톤", "5톤"] # 사용자 요청 조합
-if st.sidebar.button("최적 적재 실행"):
-    packed_trucks, remaining = calculate_packing(df, fleet)
+if uploaded_file:
+    df = pd.read_excel(uploaded_file)
+    fleet = ["11톤", "5톤", "5톤"]
     
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        for i, truck in enumerate(packed_trucks):
-            st.subheader(f"{i+1}호차: {truck['name']} (적재량: {truck['weight']}kg)")
-            fig = go.Figure()
-            # 차량 바닥 그리기
-            add_box_3d(fig, 0, 0, 0, TRUCK_SPECS[truck['name']]['l'], TRUCK_SPECS[truck['name']]['w'], 10, "Floor", "gray")
-            
-            for b in truck['boxes']:
-                add_box_3d(fig, b['pos'][0], b['pos'][1], b['pos'][2], b['l'], b['w'], b['h'], b['id'], np.random.choice(['blue', 'green', 'orange', 'red']))
-            
-            fig.update_layout(scene=dict(aspectmode='data'))
-            st.plotly_chart(fig, use_container_width=True)
-            
-    with col2:
-        st.subheader("⚠️ 미적재 박스")
-        st.write(f"총 {len(remaining)}개 박스가 실리지 못했습니다.")
-        st.write(pd.DataFrame(remaining))
+    if st.sidebar.button("최적 적재 실행"):
+        packed_trucks, remaining = calculate_packing(df, fleet)
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            for i, truck in enumerate(packed_trucks):
+                st.subheader(f"{i+1}호차: {truck['name']} ({truck['weight']}kg 적재)")
+                fig = go.Figure()
+                spec = TRUCK_SPECS[truck['name']]
+                add_box_3d(fig, 0, 0, 0, spec['l'], spec['w'], 10, "Floor", "gray")
+                for b in truck['boxes']:
+                    add_box_3d(fig, b['pos'][0], b['pos'][1], b['pos'][2], b['l'], b['w'], b['h'], b['id'], "blue")
+                fig.update_layout(scene=dict(aspectmode='data'))
+                st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            st.subheader("⚠️ 미적재 박스")
+            st.write(pd.DataFrame(remaining)[['id', 'l', 'w', 'h', 'weight']] if remaining else "없음")
