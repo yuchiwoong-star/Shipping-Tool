@@ -11,7 +11,7 @@ MAX_STACK_H = 1300
 MAX_STACK_COUNT = 4 
 
 def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
-    # [수정 1] 배경이 비치지 않게 불투명도(opacity)를 1.0으로 설정
+    # 박스 본체 (완전 불투명)
     fig.add_trace(go.Mesh3d(
         x=[x0, x0+l, x0+l, x0, x0, x0+l, x0+l, x0],
         y=[y0, y0, y0+w, y0+w, y0, y0, y0+w, y0+w],
@@ -25,7 +25,7 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
         showlegend=False
     ))
     
-    # 박스 외곽선
+    # 박스 외곽선 (검은색 테두리)
     lines_x, lines_y, lines_z = [], [], []
     for s in [[0,1,2,3,0], [4,5,6,7,4], [0,4], [1,5], [2,6], [3,7]]:
         for i in s:
@@ -39,13 +39,16 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
         line=dict(color='black', width=4), showlegend=False, hoverinfo='skip'
     ))
 
-    # [수정 2] 박스 번호를 길이 방향 양 끝단 면(x축 시작과 끝)에 스티커처럼 배치
+    # [수정] 노란색 스티커 형태의 번호 표시 (측면 양 끝단 부착)
+    # 스티커 배경 (노란색 사각형)과 검은색 텍스트 결합
     fig.add_trace(go.Scatter3d(
-        x=[x0 + 5, x0 + l - 5], # 양쪽 끝 면에 밀착
+        x=[x0 + 5, x0 + l - 5], # 양 끝단 면에 바짝 붙임
         y=[y0 + w/2, y0 + w/2],
         z=[z0 + h/2, z0 + h/2],
-        mode='text', text=[name, name],
-        textfont=dict(size=14, color="white" if color == "#d62728" else "black", family="Arial Black"),
+        mode='text+markers',
+        text=[name, name],
+        marker=dict(symbol='square', size=24, color='yellow', line=dict(color='black', width=2)),
+        textfont=dict(size=13, color="black", family="Arial Black"),
         showlegend=False, hoverinfo='skip'
     ))
 
@@ -68,7 +71,7 @@ def calculate_packing(box_df, fleet):
             })
         except: continue
     
-    # [수정 3] 상위 10% 길이 박스 판별 로직
+    # 상위 10% 길이 계산
     all_lengths = sorted([b['l'] for b in clean_boxes], reverse=True)
     threshold_idx = max(0, int(len(all_lengths) * 0.1) - 1)
     length_threshold = all_lengths[threshold_idx] if all_lengths else 0
@@ -89,7 +92,7 @@ def calculate_packing(box_df, fleet):
                        stack_h + b['h'] <= MAX_STACK_H and \
                        truck_res['weight'] + b['weight'] <= spec['cap']:
                         b['pos'] = [curr_y, spec['w'] - rem_w, stack_h]
-                        # 상위 10% 길이는 빨간색, 나머지는 연한 주황색(기본)
+                        # 상위 10% 빨간색, 나머지 주황색
                         b['color'] = '#d62728' if b['l'] >= length_threshold else '#ffbb78'
                         temp_stack.append(b); truck_res['weight'] += b['weight']
                         stack_h += b['h']; stack_count += 1; lane_w = max(lane_w, b['w'])
@@ -135,7 +138,7 @@ if uploaded_file:
                     zaxis=dict(title='높이 (H)', range=[0, 2300]),
                     aspectmode='manual',
                     aspectratio=dict(x=3, y=1, z=1),
-                    camera=dict(eye=dict(x=1.8, y=1.8, z=1.5)) # 시야 중앙 확보
+                    camera=dict(eye=dict(x=1.8, y=1.8, z=1.5))
                 ),
                 margin=dict(l=0, r=0, b=0, t=50), height=800
             )
