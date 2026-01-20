@@ -11,7 +11,7 @@ MAX_STACK_H = 1300
 MAX_STACK_COUNT = 4 
 
 def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
-    # [1] 박스 본체 (불투명도 1.0)
+    # [1] 박스 본체 (완전 불투명)
     fig.add_trace(go.Mesh3d(
         x=[x0, x0+l, x0+l, x0, x0, x0+l, x0+l, x0],
         y=[y0, y0, y0+w, y0+w, y0, y0, y0+w, y0+w],
@@ -25,7 +25,7 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
         showlegend=False
     ))
     
-    # [2] 박스 테두리 (검은색)
+    # [2] 박스 테두리
     lines_x, lines_y, lines_z = [], [], []
     for s in [[0,1,2,3,0], [4,5,6,7,4], [0,4], [1,5], [2,6], [3,7]]:
         for i in s:
@@ -39,34 +39,37 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
         line=dict(color='black', width=3), showlegend=False, hoverinfo='skip'
     ))
 
-    # [3] 양쪽 단면(X축 끝단) 2D 스티커 밀착 구현
-    # 붕 떠 보이지 않도록 'Scatter3d' 대신 'Mesh3d'로 얇은 노란색 면을 직접 생성
-    label_w = min(w * 0.5, 300) # 박스 폭에 맞춘 라벨 너비
-    label_h = min(h * 0.5, 200) # 박스 높이에 맞춘 라벨 높이
-    offset = 0.5 # 겹침 방지를 위한 0.5mm 미세 돌출
+    # [3] 양쪽 단면(2면) 2D 스티커 물리적 생성
+    # 스티커 규격 설정
+    s_w = min(w * 0.6, 400)
+    s_h = min(h * 0.6, 300)
+    # Z-fighting 방지를 위한 미세 돌출 (0.5mm)
+    gap = 0.5 
 
-    for x_sticker in [x0 - offset, x0 + l + offset]:
-        # 노란색 사각형 면 생성
+    # x0(앞)과 x0+l(뒤) 양쪽 면에 각각 스티커와 글자 생성
+    for x_side in [x0 - gap, x0 + l + gap]:
+        # 노란색 면(스티커 배경) 직접 생성
         fig.add_trace(go.Mesh3d(
-            x=[x_sticker, x_sticker, x_sticker, x_sticker],
-            y=[y0 + w/2 - label_w/2, y0 + w/2 + label_w/2, y0 + w/2 + label_w/2, y0 + w/2 - label_w/2],
-            z=[z0 + h/2 - label_h/2, z0 + h/2 - label_h/2, z0 + h/2 + label_h/2, z0 + h/2 + label_h/2],
+            x=[x_side, x_side, x_side, x_side],
+            y=[y0+w/2-s_w/2, y0+w/2+s_w/2, y0+w/2+s_w/2, y0+w/2-s_w/2],
+            z=[z0+h/2-s_h/2, z0+h/2-s_h/2, z0+h/2+s_h/2, z0+h/2+s_h/2],
             i=[0, 0], j=[1, 2], k=[2, 3],
             color='yellow', opacity=1.0, showlegend=False, hoverinfo='skip'
         ))
-        # 노란 면 위에 검은색 텍스트 배치
+        # 스티커 면 위에 글자 배치 (스티커 면보다 0.1mm 더 돌출시켜 글자 묻힘 방지)
+        text_x = x_side - 0.1 if x_side < x0 else x_side + 0.1
         fig.add_trace(go.Scatter3d(
-            x=[x_sticker], y=[y0 + w/2], z=[z0 + h/2],
+            x=[text_x], y=[y0 + w/2], z=[z0 + h/2],
             mode='text', text=[name],
-            textfont=dict(size=min(14, label_h/10), color="black", family="Arial Black"),
+            textfont=dict(size=min(15, s_h/8), color="black", family="Arial Black"),
             showlegend=False, hoverinfo='skip'
         ))
 
 def calculate_packing(box_df, fleet):
     cols = [str(c).lower().strip() for c in box_df.columns]
     def find_col(keys, default_idx):
-        for i, col in enumerate(cols):
-            if any(k in col for k in keys): return box_df.columns[i]
+        for i, c in enumerate(cols):
+            if any(k in c for k in keys): return box_df.columns[i]
         return box_df.columns[default_idx] if len(box_df.columns) > default_idx else box_df.columns[0]
 
     t_l, t_w, t_h = find_col(['길이', 'l'], 3), find_col(['폭', 'w'], 1), find_col(['높이', 'h'], 2)
@@ -145,7 +148,7 @@ if uploaded_file:
                     zaxis=dict(title='높이 (H)', range=[0, 2300]),
                     aspectmode='manual',
                     aspectratio=dict(x=3, y=1, z=1),
-                    camera=dict(eye=dict(x=1.8, y=1.8, z=1.5))
+                    camera=dict(eye=dict(x=1.5, y=1.5, z=1.2))
                 ),
                 margin=dict(l=0, r=0, b=0, t=50), height=800
             )
