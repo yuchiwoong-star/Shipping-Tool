@@ -3,13 +3,13 @@ import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
 
-# 1. 차량 제원 설정 (Source 1 데이터 기반)
+# 1. 차량 제원 설정 (Source 1 데이터 반영)
 TRUCK_SPECS = {
     "11톤": {"w": 2350, "l": 9000, "h": 2300, "cap": 13000},
     "5톤": {"w": 2350, "l": 6200, "h": 2100, "cap": 7000}
 }
-MAX_STACK_H = 1300  # 사용자 요청: 높이 제한 1.3m
-MAX_STACK_COUNT = 4 # 사용자 요청: 최대 4단
+MAX_STACK_H = 1300  # 사용자 요청 높이 제한 1.3m
+MAX_STACK_COUNT = 4 # 최대 4단 적재
 
 def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
     fig.add_trace(go.Mesh3d(
@@ -24,7 +24,7 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
     ))
 
 def calculate_packing(box_df, fleet):
-    # 엑셀 열 이름 유연하게 인식 (KeyError 'l' 방지)
+    # 엑셀 열 이름을 유연하게 인식하도록 보강
     cols = [str(c).lower().strip() for c in box_df.columns]
     def find_col(keys, default_idx):
         for i, c in enumerate(cols):
@@ -78,16 +78,16 @@ def calculate_packing(box_df, fleet):
         results.append(truck_res)
     return results, pending
 
-# --- 웹 페이지 설정 ---
-st.set_page_config(page_title="3D 적재 최적화", layout="wide")
+# --- 웹 페이지 화면 구현 ---
+st.set_page_config(page_title="3D 적재 시뮬레이터", layout="wide")
 st.title("📦 3D 차량 적재 최적화 시스템")
 
-# [수정] st.file_sidebar 오류 해결 (AttributeError 방지)
+# 파일 업로드 (xlsx 전용)
 uploaded_file = st.sidebar.file_uploader("박스 정보 엑셀 업로드 (xlsx)", type=['xlsx'])
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
-    fleet = ["11톤", "5톤", "5톤"] # 사용자 요청 차량 조합
+    fleet = ["11톤", "5톤", "5톤"] # 사용자 요청 배차 조합
     
     if st.sidebar.button("최적 적재 실행"):
         packed_trucks, remaining = calculate_packing(df, fleet)
@@ -96,7 +96,9 @@ if uploaded_file:
             st.subheader(f"🚚 {truck['name']} ({truck['weight']:.1f}kg 적재)")
             spec = TRUCK_SPECS[truck['name']]
             fig = go.Figure()
+            # 차량 바닥판 생성
             add_box_3d(fig, 0, 0, 0, spec['l'], spec['w'], 20, "Floor", "lightgray")
+            # 적재된 박스 생성
             for b in truck['boxes']:
                 add_box_3d(fig, b['pos'][0], b['pos'][1], b['pos'][2], b['l'], b['w'], b['h'], b['id'], "royalblue")
             
@@ -104,8 +106,8 @@ if uploaded_file:
                 scene=dict(xaxis_title='길이(L)', yaxis_title='폭(W)', zaxis_title='높이(H)', aspectmode='data'),
                 margin=dict(l=0, r=0, b=0, t=40), height=500
             )
-            # [수정] 고유 키 부여 (StreamlitDuplicateElementId 방지)
-            st.plotly_chart(fig, width='stretch', key=f"chart_{truck['id']}")
+            # 중복 오류 방지를 위한 고유 key 값 사용
+            st.plotly_chart(fig, key=f"chart_{truck['id']}")
 
         if remaining:
             st.warning(f"⚠️ 미적재 박스: {len(remaining)}개")
