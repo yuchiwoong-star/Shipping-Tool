@@ -36,19 +36,26 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
 
     fig.add_trace(go.Scatter3d(
         x=lines_x, y=lines_y, z=lines_z, mode='lines',
-        line=dict(color='black', width=4), showlegend=False, hoverinfo='skip'
+        line=dict(color='black', width=3), showlegend=False, hoverinfo='skip'
     ))
 
-    # [수정] 노란색 스티커 형태의 번호 표시 (측면 양 끝단 부착)
-    # 스티커 배경 (노란색 사각형)과 검은색 텍스트 결합
+    # [수정] 박스 크기에 비례하는 스티커 사이즈 조정
+    # 박스 높이나 폭 중 작은 값에 맞춰 스티커 크기(marker size)를 결정합니다.
+    sticker_size = min(20, max(8, h / 40)) 
+
     fig.add_trace(go.Scatter3d(
-        x=[x0 + 5, x0 + l - 5], # 양 끝단 면에 바짝 붙임
+        x=[x0 + 2, x0 + l - 2], # 양 끝단 면 부착
         y=[y0 + w/2, y0 + w/2],
         z=[z0 + h/2, z0 + h/2],
         mode='text+markers',
         text=[name, name],
-        marker=dict(symbol='square', size=24, color='yellow', line=dict(color='black', width=2)),
-        textfont=dict(size=13, color="black", family="Arial Black"),
+        marker=dict(
+            symbol='square', 
+            size=sticker_size * 1.5, # 스티커 배경 크기
+            color='yellow', 
+            line=dict(color='black', width=1)
+        ),
+        textfont=dict(size=sticker_size * 0.8, color="black", family="Arial Black"),
         showlegend=False, hoverinfo='skip'
     ))
 
@@ -71,7 +78,7 @@ def calculate_packing(box_df, fleet):
             })
         except: continue
     
-    # 상위 10% 길이 계산
+    # 상위 10% 길이 기준 계산
     all_lengths = sorted([b['l'] for b in clean_boxes], reverse=True)
     threshold_idx = max(0, int(len(all_lengths) * 0.1) - 1)
     length_threshold = all_lengths[threshold_idx] if all_lengths else 0
@@ -138,7 +145,7 @@ if uploaded_file:
                     zaxis=dict(title='높이 (H)', range=[0, 2300]),
                     aspectmode='manual',
                     aspectratio=dict(x=3, y=1, z=1),
-                    camera=dict(eye=dict(x=1.8, y=1.8, z=1.5))
+                    camera=dict(eye=dict(x=2.0, y=2.0, z=1.5))
                 ),
                 margin=dict(l=0, r=0, b=0, t=50), height=800
             )
