@@ -3,13 +3,13 @@ import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
 
-# 1. 차량 제원 설정
+# 1. 차량 제원 설정 (Source 1 데이터 기반)
 TRUCK_SPECS = {
     "11톤": {"w": 2350, "l": 9000, "h": 2300, "cap": 13000},
     "5톤": {"w": 2350, "l": 6200, "h": 2100, "cap": 7000}
 }
-MAX_STACK_H = 1300  
-MAX_STACK_COUNT = 4 
+MAX_STACK_H = 1300  # 사용자 요청: 높이 제한 1.3m
+MAX_STACK_COUNT = 4 # 사용자 요청: 최대 4단
 
 def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
     fig.add_trace(go.Mesh3d(
@@ -24,11 +24,12 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
     ))
 
 def calculate_packing(box_df, fleet):
+    # 엑셀 열 이름 유연하게 인식 (KeyError 'l' 방지)
     cols = [str(c).lower().strip() for c in box_df.columns]
-    def find_col(keys, default):
+    def find_col(keys, default_idx):
         for i, c in enumerate(cols):
             if any(k in c for k in keys): return box_df.columns[i]
-        return box_df.columns[default] if len(box_df.columns) > default else box_df.columns[0]
+        return box_df.columns[default_idx] if len(box_df.columns) > default_idx else box_df.columns[0]
 
     t_l = find_col(['l', '길이', 'length'], 3)
     t_w = find_col(['w', '폭', 'width'], 1)
@@ -41,10 +42,8 @@ def calculate_packing(box_df, fleet):
         try:
             clean_boxes.append({
                 'id': str(r[t_id]), 
-                'w': float(r[t_w]), 
-                'h': float(r[t_h]), 
-                'l': float(r[t_l]), 
-                'weight': float(r[t_weight])
+                'w': float(r[t_w]), 'h': float(r[t_h]), 
+                'l': float(r[t_l]), 'weight': float(r[t_weight])
             })
         except: continue
     
@@ -79,14 +78,16 @@ def calculate_packing(box_df, fleet):
         results.append(truck_res)
     return results, pending
 
+# --- 웹 페이지 설정 ---
 st.set_page_config(page_title="3D 적재 최적화", layout="wide")
 st.title("📦 3D 차량 적재 최적화 시스템")
 
+# [수정] st.file_sidebar 오류 해결 (AttributeError 방지)
 uploaded_file = st.sidebar.file_uploader("박스 정보 엑셀 업로드 (xlsx)", type=['xlsx'])
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
-    fleet = ["11톤", "5톤", "5톤"]
+    fleet = ["11톤", "5톤", "5톤"] # 사용자 요청 차량 조합
     
     if st.sidebar.button("최적 적재 실행"):
         packed_trucks, remaining = calculate_packing(df, fleet)
@@ -103,6 +104,7 @@ if uploaded_file:
                 scene=dict(xaxis_title='길이(L)', yaxis_title='폭(W)', zaxis_title='높이(H)', aspectmode='data'),
                 margin=dict(l=0, r=0, b=0, t=40), height=500
             )
+            # [수정] 고유 키 부여 (StreamlitDuplicateElementId 방지)
             st.plotly_chart(fig, width='stretch', key=f"chart_{truck['id']}")
 
         if remaining:
