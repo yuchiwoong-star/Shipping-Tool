@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import random
 
-# 1. 차량 제원 및 제약 조건
+# 1. 차량 제원 설정
 TRUCK_SPECS = {
     "11톤": {"w": 2350, "l": 9000, "h": 2300, "cap": 13000},
     "5톤": {"w": 2350, "l": 6200, "h": 2100, "cap": 7000}
@@ -14,7 +14,7 @@ MAX_STACK_COUNT = 4
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 
 def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
-    # 박스 본체 (Mesh3d)
+    # 박스 본체
     fig.add_trace(go.Mesh3d(
         x=[x0, x0+l, x0+l, x0, x0, x0+l, x0+l, x0],
         y=[y0, y0, y0+w, y0+w, y0, y0, y0+w, y0+w],
@@ -28,7 +28,7 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
         showlegend=False
     ))
     
-    # 박스 외곽선 (검은색 테두리)
+    # 박스 외곽선
     lines_x, lines_y, lines_z = [], [], []
     for s in [[0,1,2,3,0], [4,5,6,7,4], [0,4], [1,5], [2,6], [3,7]]:
         for i in s:
@@ -42,10 +42,9 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
         line=dict(color='black', width=3), showlegend=False, hoverinfo='skip'
     ))
 
-    # [수정] 박스 번호를 길이 방향 양 측면에 배치 (스티커 효과)
-    # x0 (앞면), x0 + l (뒷면) 위치에 번호 표시
+    # [사용자 요청] 박스 번호를 길이 방향 양 측면(앞면, 뒷면)에만 표시
     fig.add_trace(go.Scatter3d(
-        x=[x0 + 50, x0 + l - 50],  # 양 끝단에서 약간 안쪽
+        x=[x0 + 10, x0 + l - 10],  # 박스 양 끝면에 가깝게 배치
         y=[y0 + w/2, y0 + w/2],
         z=[z0 + h/2, z0 + h/2],
         mode='text',
@@ -89,4 +88,52 @@ def calculate_packing(box_df, fleet):
                     if b['w'] <= rem_w and curr_y + b['l'] <= spec['l'] and \
                        stack_h + b['h'] <= MAX_STACK_H and \
                        truck_res['weight'] + b['weight'] <= spec['cap']:
-                        b['pos'] = [curr_y,
+                        b['pos'] = [curr_y, spec['w'] - rem_w, stack_h]
+                        b['color'] = random.choice(COLORS)
+                        temp_stack.append(b); truck_res['weight'] += b['weight']
+                        stack_h += b['h']; stack_count += 1; lane_w = max(lane_w, b['w'])
+                        pending.pop(0)
+                    else: break
+                if temp_stack:
+                    truck_res['boxes'].extend(temp_stack)
+                    curr_y += max([bx['l'] for bx in temp_stack])
+                else: break
+            if lane_w > 0: rem_w -= lane_w
+            else: break
+        results.append(truck_res)
+    return results, pending
+
+st.set_page_config(layout="wide")
+st.title("📦 3D 차량 적재 최적화 시스템")
+uploaded_file = st.sidebar.file_uploader("박스 정보 엑셀 업로드 (xlsx)", type=['xlsx'])
+
+if uploaded_file:
+    df = pd.read_excel(uploaded_file)
+    if st.sidebar.button("최적 적재 실행"):
+        packed_trucks, remaining = calculate_packing(df, ["11톤", "5톤", "5톤"])
+        for truck in packed_trucks:
+            st.subheader(f"🚚 {truck['name']} ({truck['weight']:.1f}kg 적재)")
+            spec = TRUCK_SPECS[truck['name']]
+            fig = go.Figure()
+            # 바닥 (텍스트 제거)
+            fig.add_trace(go.Mesh3d(
+                x=[0, spec['l'], spec['l'], 0, 0, spec['l'], spec['l'], 0],
+                y=[0, 0, spec['w'], spec['w'], 0, 0, spec['w'], spec['w']],
+                z=[0, 0, 0, 0, 10, 10, 10, 10],
+                opacity=0.2, color='gray', showlegend=False, hoverinfo='skip'
+            ))
+            
+            for b in truck['boxes']:
+                add_box_3d(fig, b['pos'][0], b['pos'][1], b['pos'][2], b['l'], b['w'], b['h'], b['id'], b['color'])
+            
+            fig.update_layout(
+                scene=dict(
+                    xaxis=dict(title='길이 (L)', range=[0, 9000]),
+                    yaxis=dict(title='폭 (W)', range=[0, 2350]),
+                    zaxis=dict(title='높이 (H)', range=[0, 2300]),
+                    aspectmode='manual',
+                    aspectratio=dict(x=3, y=1, z=1)
+                ),
+                margin=dict(l=0, r=0, b=0, t=50), height=800
+            )
+            st.plotly_chart(fig, key=f"chart_{truck['id']}")
