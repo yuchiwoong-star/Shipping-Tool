@@ -93,4 +93,44 @@ def calculate_packing(box_df, fleet):
                         b['pos'] = [curr_y, spec['w'] - rem_w, stack_h]
                         b['color'] = random.choice(COLORS)
                         temp_stack.append(b); truck_res['weight'] += b['weight']
-                        stack_
+                        stack_h += b['h']; stack_count += 1; lane_w = max(lane_w, b['w'])
+                        pending.pop(0)
+                    else: break
+                if temp_stack:
+                    truck_res['boxes'].extend(temp_stack)
+                    curr_y += max([bx['l'] for bx in temp_stack])
+                else: break
+            if lane_w > 0: rem_w -= lane_w
+            else: break
+        results.append(truck_res)
+    return results, pending
+
+st.set_page_config(layout="wide")
+st.title("📦 3D 차량 적재 최적화 시스템")
+uploaded_file = st.sidebar.file_uploader("박스 정보 엑셀 업로드 (xlsx)", type=['xlsx'])
+
+if uploaded_file:
+    df = pd.read_excel(uploaded_file)
+    if st.sidebar.button("최적 적재 실행"):
+        packed_trucks, remaining = calculate_packing(df, ["11톤", "5톤", "5톤"])
+        for truck in packed_trucks:
+            st.subheader(f"🚚 {truck['name']} ({truck['weight']:.1f}kg 적재)")
+            fig = go.Figure()
+            spec = TRUCK_SPECS[truck['name']]
+            add_box_3d(fig, 0, 0, 0, spec['l'], spec['w'], 20, "Floor", "lightgray")
+            for b in truck['boxes']:
+                add_box_3d(fig, b['pos'][0], b['pos'][1], b['pos'][2], b['l'], b['w'], b['h'], b['id'], b['color'])
+            
+            fig.update_layout(
+                scene=dict(
+                    xaxis=dict(title='길이 (L)', range=[0, 9000], showgrid=True),
+                    yaxis=dict(title='폭 (W)', range=[0, 2350], showgrid=True),
+                    zaxis=dict(title='높이 (H)', range=[0, 2300], showgrid=True),
+                    aspectmode='manual',
+                    aspectratio=dict(x=3, y=1, z=1)
+                ),
+                margin=dict(l=0, r=0, b=0, t=50),
+                height=800,
+                hoverlabel=dict(bgcolor="white", font_size=16, font_family="Malgun Gothic")
+            )
+            st.plotly_chart(fig, key=f"chart_{truck['id']}")
