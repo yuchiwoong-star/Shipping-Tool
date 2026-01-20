@@ -25,7 +25,7 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
         showlegend=False
     ))
     
-    # 박스 외곽선 (검은색 테두리)
+    # 박스 테두리 (검은색)
     lines_x, lines_y, lines_z = [], [], []
     for s in [[0,1,2,3,0], [4,5,6,7,4], [0,4], [1,5], [2,6], [3,7]]:
         for i in s:
@@ -39,33 +39,36 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
         line=dict(color='black', width=3), showlegend=False, hoverinfo='skip'
     ))
 
-    # [핵심 수정] 양 측면 밀착 스티커 라벨
-    # sticker_offset을 아주 작게(0.5) 설정하여 면에 붙어 있게 구현
-    sticker_offset = 0.5 
-    sticker_size = min(20, max(8, h / 45)) 
+    # [핵심] 양쪽 측면(X축 끝단) 2D 스티커 구현
+    # 박스 높이에 맞춰 라벨 사이즈 최적화
+    label_size = min(20, max(8, h / 40))
+    # 박스 면에 딱 붙게 하기 위해 offset을 0.1mm 수준으로 최소화
+    offset = 0.1 
 
-    # x0(앞면)와 x0+l(뒷면) 두 곳 모두에 라벨 배치
-    fig.add_trace(go.Scatter3d(
-        x=[x0 - sticker_offset, x0 + l + sticker_offset], 
-        y=[y0 + w/2, y0 + w/2],
-        z=[z0 + h/2, z0 + h/2],
-        mode='text+markers',
-        text=[name, name],
-        marker=dict(
-            symbol='square', 
-            size=sticker_size * 1.8, 
-            color='yellow', 
-            line=dict(color='black', width=1)
-        ),
-        textfont=dict(size=sticker_size * 0.9, color="black", family="Arial Black"),
-        showlegend=False, hoverinfo='skip'
-    ))
+    # x0 (앞면), x0+l (뒷면) 두 곳에 노란색 스티커 부착
+    for x_sticker in [x0 - offset, x0 + l + offset]:
+        fig.add_trace(go.Scatter3d(
+            x=[x_sticker],
+            y=[y0 + w/2],
+            z=[z0 + h/2],
+            mode='markers+text',
+            marker=dict(
+                symbol='square',
+                size=label_size * 2, # 노란색 사각형 배경
+                color='yellow',
+                line=dict(color='black', width=1)
+            ),
+            text=[name],
+            textposition="middle center", # 사각형 중앙에 글자 배치
+            textfont=dict(size=label_size, color="black", family="Arial Black"),
+            showlegend=False, hoverinfo='skip'
+        ))
 
 def calculate_packing(box_df, fleet):
     cols = [str(c).lower().strip() for c in box_df.columns]
     def find_col(keys, default_idx):
-        for i, c in enumerate(cols):
-            if any(k in c for k in keys): return box_df.columns[i]
+        for i, col in enumerate(cols):
+            if any(k in col for k in keys): return box_df.columns[i]
         return box_df.columns[default_idx] if len(box_df.columns) > default_idx else box_df.columns[0]
 
     t_l, t_w, t_h = find_col(['길이', 'l'], 3), find_col(['폭', 'w'], 1), find_col(['높이', 'h'], 2)
@@ -80,6 +83,7 @@ def calculate_packing(box_df, fleet):
             })
         except: continue
     
+    # 상위 10% 길이 강조 로직
     all_lengths = sorted([b['l'] for b in clean_boxes], reverse=True)
     threshold_idx = max(0, int(len(all_lengths) * 0.1) - 1)
     length_threshold = all_lengths[threshold_idx] if all_lengths else 0
@@ -100,6 +104,7 @@ def calculate_packing(box_df, fleet):
                        stack_h + b['h'] <= MAX_STACK_H and \
                        truck_res['weight'] + b['weight'] <= spec['cap']:
                         b['pos'] = [curr_y, spec['w'] - rem_w, stack_h]
+                        # 상위 10% 빨간색, 나머지 기본 주황색
                         b['color'] = '#d62728' if b['l'] >= length_threshold else '#ffbb78'
                         temp_stack.append(b); truck_res['weight'] += b['weight']
                         stack_h += b['h']; stack_count += 1; lane_w = max(lane_w, b['w'])
@@ -127,6 +132,7 @@ if uploaded_file:
             fig = go.Figure()
             spec = TRUCK_SPECS[truck['name']]
             
+            # 가이드라인 (트럭 틀)
             fig.add_trace(go.Scatter3d(
                 x=[0, spec['l'], spec['l'], 0, 0, 0, spec['l'], spec['l'], 0, 0, spec['l'], spec['l']],
                 y=[0, 0, spec['w'], spec['w'], 0, 0, 0, spec['w'], spec['w'], 0, 0, spec['w']],
@@ -144,7 +150,7 @@ if uploaded_file:
                     zaxis=dict(title='높이 (H)', range=[0, 2300]),
                     aspectmode='manual',
                     aspectratio=dict(x=3, y=1, z=1),
-                    camera=dict(eye=dict(x=2.0, y=2.0, z=1.5))
+                    camera=dict(eye=dict(x=1.8, y=1.8, z=1.5))
                 ),
                 margin=dict(l=0, r=0, b=0, t=50), height=800
             )
