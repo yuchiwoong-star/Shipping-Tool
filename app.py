@@ -25,7 +25,7 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
         showlegend=False
     ))
     
-    # 박스 외곽선 (검은색 테두리)
+    # 박스 외곽선 (두께 조정)
     lines_x, lines_y, lines_z = [], [], []
     for s in [[0,1,2,3,0], [4,5,6,7,4], [0,4], [1,5], [2,6], [3,7]]:
         for i in s:
@@ -39,31 +39,33 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
         line=dict(color='black', width=3), showlegend=False, hoverinfo='skip'
     ))
 
-    # [수정] 박스 크기에 비례하는 스티커 사이즈 조정
-    # 박스 높이나 폭 중 작은 값에 맞춰 스티커 크기(marker size)를 결정합니다.
-    sticker_size = min(20, max(8, h / 40)) 
+    # [핵심 수정] 스티커 위치 미세 조정 (Z-fighting 방지)
+    # offset 값을 주어 박스 면보다 5mm 겉으로 돌출시킵니다.
+    offset = 5 
+    sticker_size = min(20, max(10, h / 30))
 
+    # 앞뒷면(길이방향 양 끝단) 노란색 스티커 라벨
     fig.add_trace(go.Scatter3d(
-        x=[x0 + 2, x0 + l - 2], # 양 끝단 면 부착
+        x=[x0 - offset, x0 + l + offset], # 박스 면보다 약간 바깥쪽
         y=[y0 + w/2, y0 + w/2],
         z=[z0 + h/2, z0 + h/2],
         mode='text+markers',
         text=[name, name],
         marker=dict(
             symbol='square', 
-            size=sticker_size * 1.5, # 스티커 배경 크기
+            size=sticker_size * 2, 
             color='yellow', 
             line=dict(color='black', width=1)
         ),
-        textfont=dict(size=sticker_size * 0.8, color="black", family="Arial Black"),
+        textfont=dict(size=sticker_size, color="black", family="Arial Black"),
         showlegend=False, hoverinfo='skip'
     ))
 
 def calculate_packing(box_df, fleet):
     cols = [str(c).lower().strip() for c in box_df.columns]
     def find_col(keys, default_idx):
-        for i, c in enumerate(cols):
-            if any(k in c for k in keys): return box_df.columns[i]
+        for i, col in enumerate(cols):
+            if any(k in col for k in keys): return box_df.columns[i]
         return box_df.columns[default_idx] if len(box_df.columns) > default_idx else box_df.columns[0]
 
     t_l, t_w, t_h = find_col(['길이', 'l'], 3), find_col(['폭', 'w'], 1), find_col(['높이', 'h'], 2)
@@ -78,7 +80,6 @@ def calculate_packing(box_df, fleet):
             })
         except: continue
     
-    # 상위 10% 길이 기준 계산
     all_lengths = sorted([b['l'] for b in clean_boxes], reverse=True)
     threshold_idx = max(0, int(len(all_lengths) * 0.1) - 1)
     length_threshold = all_lengths[threshold_idx] if all_lengths else 0
@@ -99,7 +100,6 @@ def calculate_packing(box_df, fleet):
                        stack_h + b['h'] <= MAX_STACK_H and \
                        truck_res['weight'] + b['weight'] <= spec['cap']:
                         b['pos'] = [curr_y, spec['w'] - rem_w, stack_h]
-                        # 상위 10% 빨간색, 나머지 주황색
                         b['color'] = '#d62728' if b['l'] >= length_threshold else '#ffbb78'
                         temp_stack.append(b); truck_res['weight'] += b['weight']
                         stack_h += b['h']; stack_count += 1; lane_w = max(lane_w, b['w'])
@@ -127,7 +127,6 @@ if uploaded_file:
             fig = go.Figure()
             spec = TRUCK_SPECS[truck['name']]
             
-            # 가이드 라인
             fig.add_trace(go.Scatter3d(
                 x=[0, spec['l'], spec['l'], 0, 0, 0, spec['l'], spec['l'], 0, 0, spec['l'], spec['l']],
                 y=[0, 0, spec['w'], spec['w'], 0, 0, 0, spec['w'], spec['w'], 0, 0, spec['w']],
@@ -145,7 +144,7 @@ if uploaded_file:
                     zaxis=dict(title='높이 (H)', range=[0, 2300]),
                     aspectmode='manual',
                     aspectratio=dict(x=3, y=1, z=1),
-                    camera=dict(eye=dict(x=2.0, y=2.0, z=1.5))
+                    camera=dict(eye=dict(x=1.8, y=1.8, z=1.5))
                 ),
                 margin=dict(l=0, r=0, b=0, t=50), height=800
             )
