@@ -73,7 +73,7 @@ st.set_page_config(layout="wide")
 st.title("📦 3D 차량 적재 최적화 시스템")
 
 # [cite_start]파일 업로드 (xaic.docx 기반 데이터 입력 가정) [cite: 2]
-uploaded_file = st.file_sidebar.file_uploader("박스 정보 엑셀 업로드", type=['xlsx', 'csv'])
+uploaded_file = st.sidebar.file_uploader("박스 정보 엑셀 업로드", type=['xlsx', 'csv'])
 
 # 샘플 데이터 생성 (파일 없을 시)
 if not uploaded_file:
