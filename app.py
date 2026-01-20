@@ -23,13 +23,29 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
         opacity=0.6, color=color, name=f"Box {name}"
     ))
 
-# 적재 알고리즘 (Simplified Lane Packing)
+# 수정된 적재 알고리즘 부분
 def calculate_packing(box_df, fleet):
+    # 엑셀의 열 이름을 대소문자 구분 없이 자동으로 매칭합니다.
+    col_map = {col.lower(): col for col in box_df.columns}
+    
+    # ID, W, H, L, Weight 중 하나라도 맞으면 해당 데이터를 사용합니다.
+    target_l = col_map.get('l', col_map.get('length', col_map.get('길이', box_df.columns[0])))
+    target_w = col_map.get('w', col_map.get('width', col_map.get('폭', box_df.columns[1])))
+    target_h = col_map.get('h', col_map.get('height', col_map.get('높이', box_df.columns[2])))
+    target_weight = col_map.get('weight', col_map.get('중량', col_map.get('무게', box_df.columns[3])))
+    target_id = col_map.get('id', col_map.get('박스번호', col_map.get('번호', box_df.columns[4] if len(box_df.columns)>4 else box_df.columns[0])))
+
+    # 데이터를 코드용 표준 이름으로 변경
+    box_df = box_df.rename(columns={
+        target_l: 'l', target_w: 'w', target_h: 'h', 
+        target_weight: 'weight', target_id: 'id'
+    })
+
     pending = box_df.to_dict('records')
-    # [cite_start]길이순 정렬 [cite: 2]
+    # 길이('l') 기준으로 정렬
     pending = sorted(pending, key=lambda x: x['l'], reverse=True)
     results = []
-
+    # (이후 코드는 동일합니다...)
     for t_name in fleet:
         spec = TRUCK_SPECS[t_name]
         truck_res = {"name": t_name, "boxes": [], "weight": 0}
