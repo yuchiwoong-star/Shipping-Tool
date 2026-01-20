@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-# 차량 제원 설정
+# 1. 차량 제원 설정
 TRUCK_SPECS = {
     "11톤": {"w": 2350, "l": 9000, "h": 2300, "cap": 13000},
     "5톤": {"w": 2350, "l": 6200, "h": 2100, "cap": 7000}
@@ -11,6 +11,7 @@ MAX_STACK_H = 1300
 MAX_STACK_COUNT = 4 
 
 def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
+    # 박스 입체 형상 추가
     fig.add_trace(go.Mesh3d(
         x=[x0, x0+l, x0+l, x0, x0, x0+l, x0+l, x0],
         y=[y0, y0, y0+w, y0+w, y0, y0, y0+w, y0+w],
@@ -19,6 +20,17 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
         j=[3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3],
         k=[0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6],
         opacity=0.6, color=color, name=f"Box {name}", showlegend=False
+    ))
+    
+    # [추가] 박스 번호(ID) 넘버링 표시 - 박스의 중앙 지점에 텍스트 배치
+    fig.add_trace(go.Scatter3d(
+        x=[x0 + l/2],
+        y=[y0 + w/2],
+        z=[z0 + h/2],
+        mode='text',
+        text=[name],
+        textfont=dict(size=12, color="black"),
+        showlegend=False
     ))
 
 def calculate_packing(box_df, fleet):
@@ -81,8 +93,10 @@ if uploaded_file:
             st.subheader(f"🚚 {truck['name']} ({truck['weight']:.1f}kg 적재)")
             fig = go.Figure()
             spec = TRUCK_SPECS[truck['name']]
+            # 바닥면
             add_box_3d(fig, 0, 0, 0, spec['l'], spec['w'], 20, "Floor", "lightgray")
+            # 박스 적재 및 번호 표시
             for b in truck['boxes']:
                 add_box_3d(fig, b['pos'][0], b['pos'][1], b['pos'][2], b['l'], b['w'], b['h'], b['id'], "royalblue")
-            fig.update_layout(scene=dict(aspectmode='data'), height=500)
+            fig.update_layout(scene=dict(aspectmode='data'), height=600)
             st.plotly_chart(fig, key=f"chart_{truck['id']}")
