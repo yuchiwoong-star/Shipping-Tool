@@ -202,7 +202,7 @@ def run_optimization(all_items):
     return final_trucks
 
 # ==========================================
-# 4. 시각화 (박스번호 고정 뷰 추가)
+# 4. 시각화 (박스번호 뷰 고도화)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -270,43 +270,44 @@ def draw_truck_3d(truck, camera_view="iso"):
     add_dimension((-OFFSET, L, 0), (-OFFSET, L, LIMIT_H), f"높이제한(최대4단) : {int(LIMIT_H)}", color='red')
     fig.add_trace(go.Scatter3d(x=[0,W,W,0,0], y=[0,0,L,L,0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False))
 
-    # [5] 박스 & 라벨 (수정됨: 2D annotation 삭제 -> 3D Scatter Text 사용)
-    # camera_view가 'labels'일 때만 번호를 3D 공간에 고정하여 표시
+    # [5] 박스 & 번호 (수정됨)
+    # camera_view가 'labels'일 때만 3D 텍스트 표시
     show_labels = (camera_view == 'labels')
     
     for item in truck.items:
         color = '#FF0000' if getattr(item, 'is_heavy', False) else '#f39c12'
         x, y, z = item.x, item.y, item.z; w, h, d = item.w, item.h, item.d
         
-        # 박스 그리기
+        # 박스 (Mesh3d)
         fig.add_trace(go.Mesh3d(x=[x,x+w,x+w,x, x,x+w,x+w,x], y=[y,y,y+d,y+d, y,y,y+d,y+d], z=[z,z,z,z, z+h,z+h,z+h,z+h], i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6], color=color, opacity=1.0, flatshading=True, name=item.name))
         
-        # 외곽선
+        # 외곽선 (Line)
         ex = [x,x+w,x+w,x,x, x,x+w,x+w,x,x, x+w,x+w,x+w,x+w, x,x]; ey = [y,y,y+d,y+d,y, y,y,y+d,y+d,y, y,y,y+d,y+d, y+d,y+d]; ez = [z,z,z,z,z, z+h,z+h,z+h,z+h,z+h, z,z+h,z+h,z, z,z+h]
         fig.add_trace(go.Scatter3d(x=ex, y=ey, z=ez, mode='lines', line=dict(color='black', width=3), showlegend=False))
         
-        # [NEW] 박스번호 고정 (3D Text)
+        # [NEW] 박스번호 고정 3D 텍스트
         if show_labels:
-            # 박스 상단 면 중앙에 텍스트 위치
-            tx, ty, tz = x + w/2, y + d/2, z + h + 10 # 박스 살짝 위에
+            # 박스 상단 면(z+h) 중앙에 배치
+            # z를 살짝 띄워서(z+h+2) 면에 묻히지 않게 함
+            tx, ty, tz = x + w/2, y + d/2, z + h + 2
             fig.add_trace(go.Scatter3d(
                 x=[tx], y=[ty], z=[tz],
                 mode='text',
-                text=[f"<b>{item.name}</b>"],
-                textfont=dict(color='black', size=16, family="Arial Black"), # 진한 검은색
+                text=[f"{item.name}"],
+                textfont=dict(color='black', size=14, family="Arial Black"), # 진한 검은색
                 showlegend=False
             ))
 
     # [6] 뷰 설정
-    # labels 뷰는 기본적으로 Quarter View(ISO)와 동일한 각도 사용
+    # labels 뷰는 Quarter View 각도 사용
     if camera_view == "top": eye = dict(x=0, y=0.1, z=2.5); up = dict(x=0, y=1, z=0)
     elif camera_view == "side": eye = dict(x=2.5, y=0, z=0.5); up = dict(x=0, y=0, z=1)
-    else: eye = dict(x=2.0, y=-1.5, z=1.2); up = dict(x=0, y=0, z=1) # iso, labels 공통
+    else: eye = dict(x=2.0, y=-1.5, z=1.2); up = dict(x=0, y=0, z=1) # iso, labels
     
     fig.update_layout(
         scene=dict(
             aspectmode='data', xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False),
-            bgcolor='white', camera=dict(eye=eye, up=up) # annotations 제거됨
+            bgcolor='white', camera=dict(eye=eye, up=up)
         ),
         margin=dict(l=0,r=0,b=0,t=0), height=700,
         uirevision=str(uuid.uuid4())
@@ -354,7 +355,7 @@ if uploaded_file:
                     summary = ", ".join([f"{k} {v}대" for k,v in cnt.items()])
                     st.success(f"✅ 분석 완료: 총 {len(trucks)}대 ({summary}) | 예상 총 운송비: {total_cost:,}원")
                     
-                    # [수정됨] 박스번호뷰 버튼 추가 (c4)
+                    # 버튼 4개 배치
                     c1, c2, c3, c4, _ = st.columns([1, 1, 1, 1, 4])
                     with c1: 
                         if st.button("↗️ 쿼터뷰"): st.session_state['view_mode'] = 'iso'
@@ -363,7 +364,6 @@ if uploaded_file:
                     with c3: 
                         if st.button("➡️ 사이드뷰"): st.session_state['view_mode'] = 'side'
                     with c4:
-                        # [NEW] 박스번호뷰 버튼
                         if st.button("🔢 박스번호"): st.session_state['view_mode'] = 'labels'
                     
                     tabs = st.tabs([t.name for t in trucks])
