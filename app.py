@@ -299,9 +299,9 @@ def draw_truck_3d(truck, camera_view="iso"):
 # ==========================================
 # 5. 메인 UI
 # ==========================================
-# [수정] 제목 변경
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
-st.caption("✅ 비용최적화(Lookahead) | 회전금지 | 1.3m 제한 | 80% 지지충족 | 상위 10% 중량박스 빨간색 표시")
+# [수정 2] 캡션 텍스트 변경
+st.caption("✅ 규칙 : 비용최적화 | 회전금지 | 1.3m 제한 | 80% 지지충족 | 상위 10% 중량박스 빨간색 표시")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
@@ -326,14 +326,19 @@ if uploaded_file:
         cols_to_format = [c for c in ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)'] if c in df_display.columns]
         format_dict = {c: '{:,.0f}' for c in cols_to_format}
         
-        # [수정] 헤더와 셀 모두 강제 가운데 정렬 스타일 적용
-        styler = df_display.style.format(format_dict).set_properties(**{'text-align': 'center'})
-        styler.set_table_styles([
-            {'selector': 'th', 'props': [('text-align', 'center')]},
-            {'selector': 'td', 'props': [('text-align', 'center')]}
-        ])
+        # 숫자 포맷팅만 먼저 적용
+        styler = df_display.style.format(format_dict)
         
-        st.dataframe(styler, use_container_width=True, hide_index=True, height=250)
+        # [수정 1] column_config를 사용하여 강제 가운데 정렬 적용
+        st.dataframe(
+            styler, 
+            use_container_width=True, 
+            hide_index=True, 
+            height=250,
+            column_config={
+                col: st.column_config.Column(alignment="center") for col in df_display.columns
+            }
+        )
 
         st.subheader("🚛 차량 기준 정보")
         
@@ -354,15 +359,17 @@ if uploaded_file:
             '허용하중 (kg)': '{:,.0f}',
             '운송단가': '{:,.0f}'
         }
-        
-        # [수정] 차량 기준표도 헤더와 셀 모두 강제 가운데 정렬
-        st_truck = df_truck.style.format(format_dict_truck).set_properties(**{'text-align': 'center'})
-        st_truck.set_table_styles([
-            {'selector': 'th', 'props': [('text-align', 'center')]},
-            {'selector': 'td', 'props': [('text-align', 'center')]}
-        ])
-        
-        st.dataframe(st_truck, use_container_width=True, hide_index=True)
+        st_truck = df_truck.style.format(format_dict_truck)
+
+        # [수정 1] 차량 정보 테이블에도 동일한 column_config 적용
+        st.dataframe(
+            st_truck, 
+            use_container_width=True, 
+            hide_index=True,
+            column_config={
+                col: st.column_config.Column(alignment="center") for col in df_truck.columns
+            }
+        )
 
         if st.button("최적 배차 실행 (최소비용)", type="primary"):
             st.session_state['run_result'] = load_data(df)
