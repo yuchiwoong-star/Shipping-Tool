@@ -18,7 +18,7 @@ class Box:
         self.x = 0.0
         self.y = 0.0
         self.z = 0.0
-        self.is_heavy = False  # 기본값 False
+        self.is_heavy = False
     
     @property
     def volume(self):
@@ -41,22 +41,17 @@ class Truck:
         if self.total_weight + item.weight > self.max_weight:
             return False
         
-        # 높이(z), 깊이(y), 너비(x) 순으로 피벗 정렬 (안정적 적재 유도)
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
         
         for p in self.pivots:
             px, py, pz = p
-            # 트럭 경계 벗어남 체크
             if (px + item.w > self.w) or (py + item.d > self.d) or (pz + item.h > self.h):
                 continue
-            # 충돌 체크
             if self._check_collision(item, px, py, pz):
                 continue
-            # 지지 기반 체크 (80%)
             if not self._check_support(item, px, py, pz):
                 continue
             
-            # 배치 확정
             item.x, item.y, item.z = px, py, pz
             self.items.append(item)
             self.total_weight += item.weight
@@ -64,7 +59,6 @@ class Truck:
             break
         
         if fit:
-            # 새로운 피벗 생성 (아이템의 상단, 우측, 앞쪽)
             self.pivots.append([item.x + item.w, item.y, item.z])
             self.pivots.append([item.x, item.y + item.d, item.z])
             self.pivots.append([item.x, item.y, item.z + item.h])
@@ -79,13 +73,11 @@ class Truck:
         return False
 
     def _check_support(self, item, x, y, z):
-        if z <= 0.001: return True # 바닥면은 지지 필요 없음
+        if z <= 0.001: return True
         support_area = 0.0
         item_area = item.w * item.d
         for exist in self.items:
-            # 바로 아래 층에 있는 박스인지 확인 (오차범위 1.0)
             if abs((exist.z + exist.h) - z) < 1.0:
-                # 겹치는 면적 계산
                 ox = max(0.0, min(x + item.w, exist.x + exist.w) - max(x, exist.x))
                 oy = max(0.0, min(y + item.d, exist.y + exist.d) - max(y, exist.y))
                 support_area += ox * oy
@@ -108,7 +100,7 @@ TRUCK_DB = {
 }
 
 # ==========================================
-# 3. 로직 함수 (수정됨: 속성 누락 방지)
+# 3. 로직 함수 (기존 유지)
 # ==========================================
 def load_data(df):
     items = []
@@ -116,7 +108,6 @@ def load_data(df):
         weights = pd.to_numeric(df['중량'], errors='coerce').dropna().tolist()
         if weights:
             sorted_weights = sorted(weights, reverse=True)
-            # 상위 10% (올림 처리)
             top_n = math.ceil(len(weights) * 0.1)
             cutoff_index = max(0, top_n - 1)
             heavy_threshold = sorted_weights[cutoff_index]
@@ -134,7 +125,6 @@ def load_data(df):
             weight = float(row['중량'])
             
             box = Box(name, w, h, l, weight)
-            # 중량물 체크 로직
             if weight >= heavy_threshold and weight > 0:
                 box.is_heavy = True
             else:
@@ -145,7 +135,6 @@ def load_data(df):
     return items
 
 def run_optimization(all_items):
-    # 남은 짐을 처리하는 내부 함수 (Greedy)
     def solve_remaining_greedy(current_items):
         used = []
         rem = current_items[:]
@@ -153,40 +142,28 @@ def run_optimization(all_items):
             candidates = []
             for t_name in TRUCK_DB:
                 spec = TRUCK_DB[t_name]
-                # 높이 1300 제한 적용
                 t = Truck(t_name, spec['w'], 1300, spec['l'], spec['weight'], spec['cost'])
-                
-                # 부피순 정렬 시도
                 test_i = sorted(rem, key=lambda x: x.volume, reverse=True)
                 count = 0
                 w_sum = 0
                 for item in test_i:
-                    # [중요] 박스 복제 시 is_heavy 속성 계승
                     new_box = Box(item.name, item.w, item.h, item.d, item.weight)
                     new_box.is_heavy = getattr(item, 'is_heavy', False)
-                    
                     if t.put_item(new_box):
-                        count += 1
-                        w_sum += item.weight
-                
+                        count += 1; w_sum += item.weight
                 if count > 0:
                     candidates.append({
                         'truck': t,
                         'is_all': (count == len(rem)),
-                        'eff': w_sum / spec['cost'], # 비용 효율성
+                        'eff': w_sum / spec['cost'],
                         'cost': spec['cost']
                     })
-            
             if not candidates: break
-            
-            # 모든 짐을 실을 수 있는 차가 있으면 비용이 가장 싼 차 선택
             fits_all = [c for c in candidates if c['is_all']]
             if fits_all:
                 best_t = sorted(fits_all, key=lambda x: x['cost'])[0]['truck']
             else:
-                # 아니라면 효율(원/kg)이 좋은 차 선택
                 best_t = sorted(candidates, key=lambda x: x['eff'], reverse=True)[0]['truck']
-            
             used.append(best_t)
             packed_n = [i.name for i in best_t.items]
             rem = [i for i in rem if i.name not in packed_n]
@@ -195,14 +172,11 @@ def run_optimization(all_items):
     best_solution = None
     min_total_cost = float('inf')
     
-    # 시작 트럭을 각 차종별로 변경해보며 전체 최적해 탐색
     for start_truck_name in TRUCK_DB:
         spec = TRUCK_DB[start_truck_name]
         start_truck = Truck(start_truck_name, spec['w'], 1300, spec['l'], spec['weight'], spec['cost'])
-        
         items_sorted = sorted(all_items, key=lambda x: x.volume, reverse=True)
         for item in items_sorted:
-             # [중요] 메인 루프에서도 박스 복제 시 is_heavy 속성 계승
              new_box = Box(item.name, item.w, item.h, item.d, item.weight)
              new_box.is_heavy = getattr(item, 'is_heavy', False)
              start_truck.put_item(new_box)
@@ -217,7 +191,6 @@ def run_optimization(all_items):
             sub_solution = solve_remaining_greedy(remaining)
             current_solution.extend(sub_solution)
         
-        # 모든 짐이 실렸는지 확인
         total_packed_count = sum([len(t.items) for t in current_solution])
         if total_packed_count < len(all_items):
             continue
@@ -235,7 +208,7 @@ def run_optimization(all_items):
     return final_trucks
 
 # ==========================================
-# 4. 시각화 (기존 유지 - 색상 로직 포함)
+# 4. 시각화 (기존 유지)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -244,11 +217,9 @@ def draw_truck_3d(truck, camera_view="iso"):
     W, L, Real_H = spec['w'], spec['l'], spec['real_h']
     LIMIT_H = 1300
     
-    # 섀시(바닥)
     chassis_h = 180
     fig.add_trace(go.Mesh3d(x=[0, W, W, 0, 0, W, W, 0], y=[0, 0, L, L, 0, 0, L, L], z=[-chassis_h, -chassis_h, -chassis_h, -chassis_h, 0, 0, 0, 0], i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6], color='#222222', flatshading=True, showlegend=False))
 
-    # 휠 생성 함수
     def create_realistic_wheel(cx, cy, cz, r, w):
         theta = np.linspace(0, 2*np.pi, 32)
         x_tire, y_tire, z_tire = [], [], []
@@ -277,7 +248,6 @@ def draw_truck_3d(truck, camera_view="iso"):
     wheel_pos = [(-wheel_w/2, L*0.15), (W+wheel_w/2, L*0.15), (-wheel_w/2, L*0.30), (W+wheel_w/2, L*0.30), (-wheel_w/2, L*0.70), (W+wheel_w/2, L*0.70), (-wheel_w/2, L*0.85), (W+wheel_w/2, L*0.85)]
     for wx, wy in wheel_pos: create_realistic_wheel(wx, wy, wheel_z, wheel_r, wheel_w)
 
-    # 적재함 벽면
     wall_color_rgba = 'rgba(230, 230, 230, 0.4)'; frame_color = '#555555'; frame_width = 6
     fig.add_trace(go.Surface(x=[[0, 0], [0, 0]], y=[[0, L], [0, L]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.4, hoverinfo='skip'))
     fig.add_trace(go.Surface(x=[[W, W], [W, W]], y=[[0, L], [0, L]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.4, hoverinfo='skip'))
@@ -304,7 +274,6 @@ def draw_truck_3d(truck, camera_view="iso"):
 
     annotations = []
     for item in truck.items:
-        # 시각화 로직: is_heavy가 True면 빨간색
         color = '#FF0000' if getattr(item, 'is_heavy', False) else '#f39c12'
         x, y, z = item.x, item.y, item.z; w, h, d = item.w, item.h, item.d
         fig.add_trace(go.Mesh3d(x=[x,x+w,x+w,x, x,x+w,x+w,x], y=[y,y,y+d,y+d, y,y,y+d,y+d], z=[z,z,z,z, z+h,z+h,z+h,z+h], i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6], color=color, opacity=1.0, flatshading=True, name=item.name))
@@ -328,10 +297,11 @@ def draw_truck_3d(truck, camera_view="iso"):
     return fig
 
 # ==========================================
-# 5. 메인 UI (기존 유지)
+# 5. 메인 UI (수정됨: 캡션, 테이블 높이, 차량기준표 추가)
 # ==========================================
 st.title("📦 Ultimate Load Planner (Cost Optimized)")
-st.caption("✅ 비용최적화(Lookahead) | 회전금지 | 1.3m 제한 | 80% 지지충족")
+# [수정 1] 캡션에 문구 추가
+st.caption("✅ 비용최적화(Lookahead) | 회전금지 | 1.3m 제한 | 80% 지지충족 | 상위 10% 중량박스 빨간색 표시")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
@@ -358,8 +328,32 @@ if uploaded_file:
         
         styler = df_display.style.format(format_dict).set_properties(**{'text-align': 'center'})
         
-        st.dataframe(styler, use_container_width=True, hide_index=True, height=400)
+        # [수정 2] 테이블 높이를 400 -> 250으로 축소
+        st.dataframe(styler, use_container_width=True, hide_index=True, height=250)
+
+        # [수정 3] 차량 기준 테이블 추가 (TRUCK_DB 연동)
+        st.write("🚛 **차량 기준 정보**")
+        truck_rows = []
+        for name, spec in TRUCK_DB.items():
+            truck_rows.append({
+                "차량": name,
+                "적재폭 (mm)": spec['w'],
+                "적재길이 (mm)": spec['l'],
+                "허용하중 (kg)": spec['weight'],
+                "운송단가": spec['cost']
+            })
+        df_truck = pd.DataFrame(truck_rows)
         
+        # 차량 기준 포맷팅
+        format_dict_truck = {
+            '적재폭 (mm)': '{:,.0f}',
+            '적재길이 (mm)': '{:,.0f}',
+            '허용하중 (kg)': '{:,.0f}',
+            '운송단가': '{:,.0f}'
+        }
+        st_truck = df_truck.style.format(format_dict_truck).set_properties(**{'text-align': 'center'})
+        st.dataframe(st_truck, use_container_width=True, hide_index=True)
+
         if st.button("최적 배차 실행 (최소비용)", type="primary"):
             st.session_state['run_result'] = load_data(df)
             
