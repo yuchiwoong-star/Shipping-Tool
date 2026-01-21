@@ -79,7 +79,8 @@ class Truck:
 # ==========================================
 # 2. 설정 및 데이터
 # ==========================================
-st.set_page_config(layout="wide", page_title="Ultimate Load Planner")
+st.set_page_config(layout="wide", page_title="Ultimate Load Planner (Final Design)")
+
 TRUCK_DB = {
     "5톤":  {"w": 2350, "real_h": 2350, "l": 6200,  "weight": 7000},
     "8톤":  {"w": 2350, "real_h": 2350, "l": 7300,  "weight": 10000},
@@ -158,7 +159,7 @@ def run_optimization(all_items):
     return used_trucks
 
 # ==========================================
-# 4. 시각화 (디자인 수정: 대각선 삭제, 바퀴 사실감/조명 개선)
+# 4. 시각화 (디자인 수정: 대각선 삭제, 사실적 타이어)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -173,60 +174,74 @@ def draw_truck_3d(truck, camera_view="iso"):
 
     # 2. 바퀴 (사실적인 디자인 & 조명 개선)
     def create_realistic_wheel(cx, cy, cz, r, w):
-        # (1) 타이어 본체 (검은색 고무 - 조명 효과 추가)
+        # (1) 타이어 본체
         theta = np.linspace(0, 2*np.pi, 64)
         x_tire, y_tire, z_tire = [], [], []
         for t in theta:
             x_tire.extend([cx - w/2, cx + w/2])
             y_tire.extend([cy + r*np.cos(t), cy + r*np.cos(t)])
             z_tire.extend([cz + r*np.sin(t), cz + r*np.sin(t)])
-        # [수정] lighting 속성 추가로 입체감 및 가시성 향상
-        fig.add_trace(go.Mesh3d(x=x_tire, y=y_tire, z=z_tire, alphahull=0, color='#1c1c1c', flatshading=True, showlegend=False, name='타이어', lighting=dict(ambient=0.6, diffuse=0.8, specular=0.3, roughness=0.5)))
-
-        # (2) 타이어 트레드 (Tread Pattern - 선명하게)
-        tread_lines_x, tread_lines_y, tread_lines_z = [], [], []
-        num_treads = 16
-        for i in range(num_treads):
-            t1 = (2 * math.pi / num_treads) * i
-            t2 = (2 * math.pi / num_treads) * (i + 0.5)
-            tread_lines_x.extend([cx - w/2, cx + w/2, None])
-            tread_lines_y.extend([cy + r*math.cos(t1), cy + r*math.cos(t1), None])
-            tread_lines_z.extend([cz + r*math.sin(t1), cz + r*math.sin(t1), None])
-            tread_lines_x.extend([cx - w/2, cx, cx + w/2, None])
-            tread_lines_y.extend([cy + r*math.cos(t1), cy + r*math.cos(t2), cy + r*math.cos(t1), None])
-            tread_lines_z.extend([cz + r*math.sin(t1), cz + r*math.sin(t2), cz + r*math.sin(t1), None])
-        fig.add_trace(go.Scatter3d(x=tread_lines_x, y=tread_lines_y, z=tread_lines_z, mode='lines', line=dict(color='#000000', width=2), showlegend=False, name='트레드'))
         
-        # (3) 휠 허브 (Wheel Hub - 은색 입체 & 조명)
-        hub_r = r * 0.6
-        hub_w = w * 0.2
+        # 입체감을 위해 lighting 속성 추가
+        fig.add_trace(go.Mesh3d(x=x_tire, y=y_tire, z=z_tire, alphahull=0, color='#1c1c1c', flatshading=True, showlegend=False, name='타이어', lighting=dict(ambient=0.7, diffuse=0.8, specular=0.3, roughness=0.6)))
+
+        # (2) 타이어 트레드 (격자무늬)
+        tread_x, tread_y, tread_z = [], [], []
+        num_treads = 24
+        for i in range(num_treads):
+            t = (2 * math.pi / num_treads) * i
+            t_next = (2 * math.pi / num_treads) * (i + 0.5)
+            # 가로선
+            tread_x.extend([cx - w/2, cx + w/2, None])
+            tread_y.extend([cy + r*math.cos(t), cy + r*math.cos(t), None])
+            tread_z.extend([cz + r*math.sin(t), cz + r*math.sin(t), None])
+            # 지그재그선
+            tread_x.extend([cx - w/2, cx, cx + w/2, None])
+            tread_y.extend([cy + r*math.cos(t), cy + r*math.cos(t_next), cy + r*math.cos(t), None])
+            tread_z.extend([cz + r*math.sin(t), cz + r*math.sin(t_next), cz + r*math.sin(t), None])
+            
+        fig.add_trace(go.Scatter3d(x=tread_x, y=tread_y, z=tread_z, mode='lines', line=dict(color='#000000', width=2), showlegend=False, name='트레드'))
+        
+        # (3) 휠 허브 (은색 입체)
+        hub_r = r * 0.65
+        hub_w = w * 0.15
         theta_hub = np.linspace(0, 2*np.pi, 32)
         x_hub, y_hub, z_hub = [], [], []
-        x_hub.append(cx + w/2 + hub_w); y_hub.append(cy); z_hub.append(cz)
+        # 중앙 포인트 (튀어나옴)
+        x_hub.append(cx + w/2 + hub_w)
+        y_hub.append(cy)
+        z_hub.append(cz)
+        # 테두리 포인트
         for t in theta_hub:
             x_hub.append(cx + w/2)
             y_hub.append(cy + hub_r*math.cos(t))
             z_hub.append(cz + hub_r*math.sin(t))
-        i_hub = [0] * 32; j_hub = list(range(1, 33)); k_hub = list(range(2, 33)) + [1]
-        # [수정] 조명 효과 강화 (specular, roughness)
-        fig.add_trace(go.Mesh3d(x=x_hub, y=y_hub, z=z_hub, i=i_hub, j=j_hub, k=k_hub, color='#c0c0c0', flatshading=False, showlegend=False, name='휠 허브', lighting=dict(ambient=0.6, diffuse=0.8, specular=1.0, roughness=0.2)))
+        
+        i_hub = [0] * 32
+        j_hub = list(range(1, 33))
+        k_hub = list(range(2, 33)) + [1]
+        
+        fig.add_trace(go.Mesh3d(x=x_hub, y=y_hub, z=z_hub, i=i_hub, j=j_hub, k=k_hub, color='#dddddd', flatshading=False, showlegend=False, name='휠 허브', lighting=dict(ambient=0.6, diffuse=0.9, specular=1.0, roughness=0.1)))
 
     wheel_r = 450; wheel_w = 280; wheel_z = -chassis_h - 100
     wheel_pos = [(-wheel_w/2, L*0.15), (W+wheel_w/2, L*0.15), (-wheel_w/2, L*0.30), (W+wheel_w/2, L*0.30), (-wheel_w/2, L*0.70), (W+wheel_w/2, L*0.70), (-wheel_w/2, L*0.85), (W+wheel_w/2, L*0.85)]
     for wx, wy in wheel_pos: create_realistic_wheel(wx, wy, wheel_z, wheel_r, wheel_w)
 
-    # 3. 적재함 (대각선 실선 제거 - Surface 사용)
-    wall_color_rgba = 'rgba(224, 224, 224, 0.4)' # 밝은 회색 반투명
-    frame_color = '#555555'; frame_width = 8
-    # (A) 벽면 (Surface로 매끈하게)
-    # 옆면(좌)
-    fig.add_trace(go.Surface(x=[[0, 0], [0, 0]], y=[[0, L], [0, L]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.4))
-    # 옆면(우)
-    fig.add_trace(go.Surface(x=[[W, W], [W, W]], y=[[0, L], [0, L]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.4))
+    # 3. 적재함 (대각선 실선 제거 - Mesh 대신 Surface 사용)
+    # Surface는 내부 삼각형 선을 그리지 않아 유리처럼 깔끔함
+    wall_color_rgba = 'rgba(230, 230, 230, 0.3)' # 더 투명하게
+    frame_color = '#555555'; frame_width = 6
+
+    # (A) 벽면 (Surface 사용으로 대각선 제거)
+    # 좌측
+    fig.add_trace(go.Surface(x=[[0, 0], [0, 0]], y=[[0, L], [0, L]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.3))
+    # 우측
+    fig.add_trace(go.Surface(x=[[W, W], [W, W]], y=[[0, L], [0, L]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.3))
     # 앞면
-    fig.add_trace(go.Surface(x=[[0, W], [0, W]], y=[[L, L], [L, L]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.4))
-    # 뒷면 (문)
-    fig.add_trace(go.Surface(x=[[0, W], [0, W]], y=[[0, 0], [0, 0]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.4))
+    fig.add_trace(go.Surface(x=[[0, W], [0, W]], y=[[L, L], [L, L]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.3))
+    # 뒷면
+    fig.add_trace(go.Surface(x=[[0, W], [0, W]], y=[[0, 0], [0, 0]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.3))
+
     # (B) 프레임 (외곽선)
     lines_x = [0,W,W,0,0, 0,W,W,0,0, W,W,0,0, W,W]; lines_y = [0,0,L,L,0, 0,0,L,L,0, 0,0,L,L, L,L]; lines_z = [0,0,0,0,0, Real_H,Real_H,Real_H,Real_H,Real_H, 0,Real_H,Real_H,0, 0,Real_H]
     fig.add_trace(go.Scatter3d(x=lines_x, y=lines_y, z=lines_z, mode='lines', line=dict(color=frame_color, width=frame_width), showlegend=False))
@@ -264,7 +279,7 @@ def draw_truck_3d(truck, camera_view="iso"):
 # ==========================================
 # 5. 메인 UI (기존 유지)
 # ==========================================
-st.title("📦 Ultimate Load Planner")
+st.title("📦 Ultimate Load Planner (Final Design)")
 st.caption("✅ 물리엔진 | 회전금지 | 1.3m 제한 | 뷰 컨트롤 | 고퀄리티 디자인")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
