@@ -300,6 +300,7 @@ def draw_truck_3d(truck, camera_view="iso"):
 # 5. 메인 UI
 # ==========================================
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
+# [수정 2] 캡션 텍스트 변경
 st.caption("✅ 규칙 : 비용최적화 | 부피순 적재 | 회전금지 | 1.3m 제한 | 80% 지지충족 | 하중제한 준수 | 상위 10% 중량박스 빨간색 표시")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 
@@ -325,18 +326,19 @@ if uploaded_file:
         cols_to_format = [c for c in ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)'] if c in df_display.columns]
         format_dict = {c: '{:,.0f}' for c in cols_to_format}
         
-        # 숫자 포맷팅만 먼저 적용
-        styler = df_display.style.format(format_dict)
+        # [수정 1] 오류 발생 코드 제거 및 Pandas Styler만 적용 (호환성 최우선)
+        styler = df_display.style.format(format_dict).set_properties(**{'text-align': 'center'})
+        # 헤더와 셀 강제 중앙 정렬 시도 (일부 Streamlit 버전에서는 무시될 수 있음)
+        styler.set_table_styles([
+            {'selector': 'th', 'props': [('text-align', 'center')]},
+            {'selector': 'td', 'props': [('text-align', 'center')]}
+        ])
         
-        # [핵심 수정] column_config를 사용하여 강제로 "center" 정렬 주입
         st.dataframe(
             styler, 
             use_container_width=True, 
             hide_index=True, 
-            height=250,
-            column_config={
-                col: st.column_config.Column(alignment="center") for col in df_display.columns
-            }
+            height=250
         )
 
         st.subheader("🚛 차량 기준 정보")
@@ -358,16 +360,17 @@ if uploaded_file:
             '허용하중 (kg)': '{:,.0f}',
             '운송단가': '{:,.0f}'
         }
-        st_truck = df_truck.style.format(format_dict_truck)
+        
+        st_truck = df_truck.style.format(format_dict_truck).set_properties(**{'text-align': 'center'})
+        st_truck.set_table_styles([
+            {'selector': 'th', 'props': [('text-align', 'center')]},
+            {'selector': 'td', 'props': [('text-align', 'center')]}
+        ])
 
-        # [핵심 수정] 차량 정보 테이블에도 동일한 column_config 적용
         st.dataframe(
             st_truck, 
             use_container_width=True, 
-            hide_index=True,
-            column_config={
-                col: st.column_config.Column(alignment="center") for col in df_truck.columns
-            }
+            hide_index=True
         )
 
         if st.button("최적 배차 실행 (최소비용)", type="primary"):
