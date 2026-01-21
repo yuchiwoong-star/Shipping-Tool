@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-# 1. 차량 및 적재 기준 설정
+# 1. 차량 제원 및 적재 기준 설정
 TRUCK_SPECS = {
     "11톤": {"w": 2350, "l": 9000, "h": 2300, "cap": 13000},
     "5톤": {"w": 2350, "l": 6200, "h": 2100, "cap": 7000}
@@ -11,44 +11,21 @@ MAX_STACK_H = 1300
 MAX_STACK_COUNT = 4 
 
 def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
-    # [1] 박스 본체 생성 (양 끝 단면을 제외한 나머지 면들)
+    # [1] 박스 본체 (불투명도 100%)
     fig.add_trace(go.Mesh3d(
         x=[x0, x0+l, x0+l, x0, x0, x0+l, x0+l, x0],
         y=[y0, y0, y0+w, y0+w, y0, y0, y0+w, y0+w],
         z=[z0, z0, z0, z0, z0+h, z0+h, z0+h, z0+h],
-        # 상, 하, 좌, 우 면만 생성 (i, j, k 인덱스 조정)
-        i=[7, 0, 4, 5, 4, 0], 
-        j=[3, 4, 5, 1, 0, 1], 
-        k=[0, 7, 6, 7, 5, 2],
-        opacity=1.0, color=color, showlegend=False, hoverinfo="skip"
+        i=[7, 0, 0, 0, 4, 4, 6, 6, 4, 0, 3, 2],
+        j=[3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3],
+        k=[0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6],
+        opacity=1.0, color=color, name=f"Box {name}",
+        hoverinfo="text",
+        text=f"📦 번호: {name}<br>📏 규격: {int(l)}x{int(w)}x{int(h)}",
+        showlegend=False
     ))
-
-    # [2] 양쪽 단면 스티커 (물리적으로 분리된 노란색 면 생성)
-    # Z-fighting 방지를 위해 박스 면보다 아주 미세하게(0.1mm) 바깥에 배치
-    s_w, s_h = w * 0.7, h * 0.7 # 박스 면적의 70% 차지
-    gap = 0.2
-
-    for x_pos in [x0 - gap, x0 + l + gap]:
-        # 노란색 면 직접 생성
-        fig.add_trace(go.Mesh3d(
-            x=[x_pos, x_pos, x_pos, x_pos],
-            y=[y0+w/2-s_w/2, y0+w/2+s_w/2, y0+w/2+s_w/2, y0+w/2-s_w/2],
-            z=[z0+h/2-s_h/2, z0+h/2-s_h/2, z0+h/2+s_h/2, z0+h/2+s_h/2],
-            i=[0, 0], j=[1, 2], k=[2, 3],
-            color='yellow', opacity=1.0, showlegend=False, hoverinfo="text",
-            text=f"📦 박스: {name}<br>📏 규격: {int(l)}x{int(w)}x{int(h)}"
-        ))
-        
-        # 스티커 중앙에 번호 각인
-        fig.add_trace(go.Scatter3d(
-            x=[x_pos + (0.1 if x_pos > x0 else -0.1)],
-            y=[y0 + w/2], z=[z0 + h/2],
-            mode='text', text=[name],
-            textfont=dict(size=16, color="black", family="Arial Black"),
-            showlegend=False, hoverinfo='skip'
-        ))
-
-    # [3] 박스 외곽선
+    
+    # [2] 박스 테두리 (검은색)
     lines_x, lines_y, lines_z = [], [], []
     for s in [[0,1,2,3,0], [4,5,6,7,4], [0,4], [1,5], [2,6], [3,7]]:
         for i in s:
@@ -61,6 +38,28 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
         x=lines_x, y=lines_y, z=lines_z, mode='lines',
         line=dict(color='black', width=3), showlegend=False, hoverinfo='skip'
     ))
+
+    # [3] 길이방향 양쪽 단면(2면) 물리적 스티커 결합
+    s_w, s_h = w * 0.6, h * 0.5  # 스티커 크기
+    gap = 0.5  # 면 겹침 방지용 미세 돌출
+
+    for x_side in [x0 - gap, x0 + l + gap]:
+        # 노란색 사각형 면 직접 생성 (Mesh3d)
+        fig.add_trace(go.Mesh3d(
+            x=[x_side] * 4,
+            y=[y0+w/2-s_w/2, y0+w/2+s_w/2, y0+w/2+s_w/2, y0+w/2-s_w/2],
+            z=[z0+h/2-s_h/2, z0+h/2-s_h/2, z0+h/2+s_h/2, z0+h/2+s_h/2],
+            i=[0, 0], j=[1, 2], k=[2, 3],
+            color='yellow', opacity=1.0, showlegend=False, hoverinfo='skip'
+        ))
+        # 스티커 중앙에 번호 배치 (글자가 박스 안에 갇히도록 폰트 크기 최적화)
+        fig.add_trace(go.Scatter3d(
+            x=[x_side + (0.1 if x_side > x0 else -0.1)],
+            y=[y0 + w/2], z=[z0 + h/2],
+            mode='text', text=[name],
+            textfont=dict(size=min(14, s_h/12), color="black", family="Arial Black"),
+            showlegend=False, hoverinfo='skip'
+        ))
 
 def calculate_packing(box_df, fleet):
     cols = [str(c).lower().strip() for c in box_df.columns]
@@ -127,18 +126,15 @@ if uploaded_file:
             st.subheader(f"🚚 {truck['name']} ({truck['weight']:.1f}kg 적재)")
             fig = go.Figure()
             spec = TRUCK_SPECS[truck['name']]
-            
             for b in truck['boxes']:
                 add_box_3d(fig, b['pos'][0], b['pos'][1], b['pos'][2], b['l'], b['w'], b['h'], b['id'], b['color'])
-            
             fig.update_layout(
                 scene=dict(
-                    xaxis=dict(title='길이 (L)', range=[0, 9000], backgroundcolor="rgb(230, 230, 230)", showbackground=True),
-                    yaxis=dict(title='폭 (W)', range=[0, 2350], backgroundcolor="rgb(230, 230, 230)", showbackground=True),
-                    zaxis=dict(title='높이 (H)', range=[0, 2300], backgroundcolor="rgb(230, 230, 230)", showbackground=True),
-                    aspectmode='manual',
-                    aspectratio=dict(x=3, y=1, z=1),
-                    camera=dict(eye=dict(x=1.5, y=1.5, z=1.2))
+                    xaxis=dict(title='길이 (L)', range=[0, 9000]),
+                    yaxis=dict(title='폭 (W)', range=[0, 2350]),
+                    zaxis=dict(title='높이 (H)', range=[0, 2300]),
+                    aspectmode='manual', aspectratio=dict(x=3, y=1, z=1),
+                    camera=dict(eye=dict(x=1.8, y=1.8, z=1.5))
                 ),
                 margin=dict(l=0, r=0, b=0, t=50), height=800
             )
