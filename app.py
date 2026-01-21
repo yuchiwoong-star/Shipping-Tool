@@ -208,7 +208,7 @@ def run_optimization(all_items):
     return final_trucks
 
 # ==========================================
-# 4. 시각화 (기존 유지)
+# 4. 시각화 (디자인 전면 리뉴얼)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -217,82 +217,133 @@ def draw_truck_3d(truck, camera_view="iso"):
     W, L, Real_H = spec['w'], spec['l'], spec['real_h']
     LIMIT_H = 1300
     
-    chassis_h = 180
-    fig.add_trace(go.Mesh3d(x=[0, W, W, 0, 0, W, W, 0], y=[0, 0, L, L, 0, 0, L, L], z=[-chassis_h, -chassis_h, -chassis_h, -chassis_h, 0, 0, 0, 0], i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6], color='#222222', flatshading=True, showlegend=False))
+    # 1. 트럭 바닥 (깔끔한 회색 플레이트)
+    fig.add_trace(go.Mesh3d(
+        x=[0, W, W, 0], y=[0, 0, L, L], z=[0, 0, 0, 0],
+        color='#e0e0e0', opacity=1.0, name='적재함 바닥', hoverinfo='skip'
+    ))
 
-    def create_realistic_wheel(cx, cy, cz, r, w):
-        theta = np.linspace(0, 2*np.pi, 32)
-        x_tire, y_tire, z_tire = [], [], []
-        for t in theta:
-            x_tire.extend([cx - w/2, cx + w/2])
-            y_tire.extend([cy + r*np.cos(t), cy + r*np.cos(t)])
-            z_tire.extend([cz + r*np.sin(t), cz + r*np.sin(t)])
-        fig.add_trace(go.Mesh3d(x=x_tire, y=y_tire, z=z_tire, alphahull=0, color='#333333', flatshading=True, showlegend=False, lighting=dict(ambient=1.0)))
-        tread_x, tread_y, tread_z = [], [], []
-        num_treads = 16
-        for i in range(num_treads):
-            t1 = (2 * math.pi / num_treads) * i
-            tread_x.extend([cx - w/2, cx + w/2, None])
-            tread_y.extend([cy + r*math.cos(t1), cy + r*math.cos(t1), None])
-            tread_z.extend([cz + r*math.sin(t1), cz + r*math.sin(t1), None])
-        fig.add_trace(go.Scatter3d(x=tread_x, y=tread_y, z=tread_z, mode='lines', line=dict(color='#111111', width=3), showlegend=False))
-        hub_r = r * 0.6; hub_w = w * 0.1
-        theta_hub = np.linspace(0, 2*np.pi, 16)
-        x_hub, y_hub, z_hub = [], [], []; x_hub.append(cx + w/2 + hub_w); y_hub.append(cy); z_hub.append(cz)
-        for t in theta_hub:
-            x_hub.append(cx + w/2); y_hub.append(cy + hub_r*math.cos(t)); z_hub.append(cz + hub_r*math.sin(t))
-        i_hub = [0]*16; j_hub = list(range(1, 17)); k_hub = list(range(2, 17)) + [1]
-        fig.add_trace(go.Mesh3d(x=x_hub, y=y_hub, z=z_hub, i=i_hub, j=j_hub, k=k_hub, color='#dddddd', flatshading=True, showlegend=False, lighting=dict(ambient=0.9)))
+    # 2. 트럭 프레임 (심플한 와이어프레임)
+    def draw_wireframe_box(w, l, h, color, width=3, dash='solid'):
+        x_lines = [0, w, w, 0, 0, 0, w, w, 0, 0, w, w, 0, 0, w, w]
+        y_lines = [0, 0, l, l, 0, 0, 0, l, l, 0, 0, 0, l, l, l, l]
+        z_lines = [0, 0, 0, 0, 0, h, h, h, h, h, 0, h, h, 0, 0, h]
+        fig.add_trace(go.Scatter3d(
+            x=x_lines, y=y_lines, z=z_lines,
+            mode='lines', line=dict(color=color, width=width, dash=dash),
+            showlegend=False, hoverinfo='skip'
+        ))
 
-    wheel_r = 450; wheel_w = 280; wheel_z = -chassis_h - 100
-    wheel_pos = [(-wheel_w/2, L*0.15), (W+wheel_w/2, L*0.15), (-wheel_w/2, L*0.30), (W+wheel_w/2, L*0.30), (-wheel_w/2, L*0.70), (W+wheel_w/2, L*0.70), (-wheel_w/2, L*0.85), (W+wheel_w/2, L*0.85)]
-    for wx, wy in wheel_pos: create_realistic_wheel(wx, wy, wheel_z, wheel_r, wheel_w)
-
-    wall_color_rgba = 'rgba(230, 230, 230, 0.4)'; frame_color = '#555555'; frame_width = 6
-    fig.add_trace(go.Surface(x=[[0, 0], [0, 0]], y=[[0, L], [0, L]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.4, hoverinfo='skip'))
-    fig.add_trace(go.Surface(x=[[W, W], [W, W]], y=[[0, L], [0, L]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.4, hoverinfo='skip'))
-    fig.add_trace(go.Surface(x=[[0, W], [0, W]], y=[[L, L], [L, L]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.4, hoverinfo='skip'))
-    fig.add_trace(go.Surface(x=[[0, W], [0, W]], y=[[0, 0], [0, 0]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.4, hoverinfo='skip'))
-    lines_x = [0,W,W,0,0, 0,W,W,0,0, W,W,0,0, W,W]; lines_y = [0,0,L,L,0, 0,0,L,L,0, 0,0,L,L, L,L]; lines_z = [0,0,0,0,0, Real_H,Real_H,Real_H,Real_H,Real_H, 0,Real_H,Real_H,0, 0,Real_H]
-    fig.add_trace(go.Scatter3d(x=lines_x, y=lines_y, z=lines_z, mode='lines', line=dict(color=frame_color, width=frame_width), showlegend=False, hoverinfo='skip'))
-
-    OFFSET = 1200 
-    def add_dimension(p1, p2, label, color='black'):
-        fig.add_trace(go.Scatter3d(x=[p1[0], p2[0]], y=[p1[1], p2[1]], z=[p1[2], p2[2]], mode='lines', line=dict(color=color, width=2), showlegend=False))
-        vec = np.array(p2) - np.array(p1); length = np.linalg.norm(vec)
-        if length > 0:
-            uvw = vec / length
-            fig.add_trace(go.Cone(x=[p2[0]], y=[p2[1]], z=[p2[2]], u=[uvw[0]], v=[uvw[1]], w=[uvw[2]], sizemode="absolute", sizeref=200, anchor="tip", showscale=False, colorscale=[[0, color], [1, color]]))
-            fig.add_trace(go.Cone(x=[p1[0]], y=[p1[1]], z=[p1[2]], u=[-uvw[0]], v=[-uvw[1]], w=[-uvw[2]], sizemode="absolute", sizeref=200, anchor="tip", showscale=False, colorscale=[[0, color], [1, color]]))
-        mid = [(p1[0]+p2[0])/2, (p1[1]+p2[1])/2, (p1[2]+p2[2])/2]
-        fig.add_trace(go.Scatter3d(x=[mid[0]], y=[mid[1]], z=[mid[2]], mode='text', text=[f"<b>{label}</b>"], textfont=dict(size=14, color=color, family="Arial"), showlegend=False))
+    # 실제 적재함 높이 (연한 회색 점선)
+    draw_wireframe_box(W, L, Real_H, '#cccccc', width=2, dash='dot')
     
-    add_dimension((0, -OFFSET, 0), (W, -OFFSET, 0), f"폭 : {int(W)}")
-    add_dimension((-OFFSET, 0, 0), (-OFFSET, L, 0), f"길이 : {int(L)}")
-    add_dimension((-OFFSET, L, 0), (-OFFSET, L, LIMIT_H), f"높이제한(최대4단) : {int(LIMIT_H)}", color='red')
-    fig.add_trace(go.Scatter3d(x=[0,W,W,0,0], y=[0,0,L,L,0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False))
+    # 적재 제한 높이 1.3m (강조된 빨간 점선)
+    fig.add_trace(go.Scatter3d(
+        x=[0, W, W, 0, 0], y=[0, 0, L, L, 0], z=[LIMIT_H]*5,
+        mode='lines', line=dict(color='#ff4b4b', width=4, dash='dash'),
+        name='높이제한(1.3m)', showlegend=False, hoverinfo='skip'
+    ))
 
+    # 3. 바퀴 (단순화된 검정 실린더 - 방향성 표시용)
+    def add_simple_wheel(cx, cy, cz):
+        r = 300; width = 200
+        theta = np.linspace(0, 2*np.pi, 16)
+        x_w, y_w, z_w = [], [], []
+        for t in theta:
+            x_w.extend([cx - width/2, cx + width/2])
+            y_w.extend([cy + r*np.cos(t), cy + r*np.cos(t)])
+            z_w.extend([cz + r*np.sin(t), cz + r*np.sin(t)])
+        fig.add_trace(go.Mesh3d(x=x_w, y=y_w, z=z_w, alphahull=0, color='#333333', flatshading=True, showlegend=False, hoverinfo='skip'))
+
+    wheel_z = -300
+    # 앞바퀴 (운전석 쪽 가정 - 길이의 15% 지점)
+    add_simple_wheel(-100, L*0.15, wheel_z)
+    add_simple_wheel(W+100, L*0.15, wheel_z)
+    # 뒷바퀴 (길이의 85% 지점)
+    add_simple_wheel(-100, L*0.85, wheel_z)
+    add_simple_wheel(W+100, L*0.85, wheel_z)
+
+    # 4. 치수선 (깔끔하게 개선)
+    OFFSET = W * 0.15
+    def add_dim_line(p1, p2, text):
+        mid = [(p1[0]+p2[0])/2, (p1[1]+p2[1])/2, (p1[2]+p2[2])/2]
+        fig.add_trace(go.Scatter3d(
+            x=[p1[0], p2[0]], y=[p1[1], p2[1]], z=[p1[2], p2[2]],
+            mode='lines+text', line=dict(color='#555555', width=2),
+            text=[f"", f"", f"<b>{text}</b>"], textposition="middle center",
+            textfont=dict(size=12, color='#333333'), showlegend=False, hoverinfo='skip'
+        ))
+        # 양끝 점
+        fig.add_trace(go.Scatter3d(
+            x=[p1[0], p2[0]], y=[p1[1], p2[1]], z=[p1[2], p2[2]],
+            mode='markers', marker=dict(size=3, color='#555555'), showlegend=False, hoverinfo='skip'
+        ))
+
+    add_dim_line((0, -OFFSET, 0), (W, -OFFSET, 0), f"폭: {int(W)}mm")
+    add_dim_line((-OFFSET, 0, 0), (-OFFSET, L, 0), f"길이: {int(L)}mm")
+    add_dim_line((-OFFSET, L, 0), (-OFFSET, L, LIMIT_H), f"제한높이: {int(LIMIT_H)}mm")
+
+    # 5. 박스 그리기 (디자인 개선)
     annotations = []
     for item in truck.items:
-        color = '#FF0000' if getattr(item, 'is_heavy', False) else '#f39c12'
-        x, y, z = item.x, item.y, item.z; w, h, d = item.w, item.h, item.d
-        fig.add_trace(go.Mesh3d(x=[x,x+w,x+w,x, x,x+w,x+w,x], y=[y,y,y+d,y+d, y,y,y+d,y+d], z=[z,z,z,z, z+h,z+h,z+h,z+h], i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6], color=color, opacity=1.0, flatshading=True, name=item.name))
-        ex = [x,x+w,x+w,x,x, x,x+w,x+w,x,x, x+w,x+w,x+w,x+w, x,x]; ey = [y,y,y+d,y+d,y, y,y,y+d,y+d,y, y,y,y+d,y+d, y+d,y+d]; ez = [z,z,z,z,z, z+h,z+h,z+h,z+h,z+h, z,z+h,z+h,z, z,z+h]
-        fig.add_trace(go.Scatter3d(x=ex, y=ey, z=ez, mode='lines', line=dict(color='black', width=3), showlegend=False))
-        cx, cy, cz = x + w/2, y + d/2, z + h/2
-        annotations.append(dict(x=cx, y=cy, z=cz, text=f"<b>{item.name}</b>", xanchor="center", yanchor="middle", showarrow=False, font=dict(color="white" if getattr(item, 'is_heavy', False) else "black", size=14, family="Arial Black"), bgcolor="rgba(0, 0, 0, 0.6)" if getattr(item, 'is_heavy', False) else "rgba(255, 255, 255, 0.7)", borderpad=2))
+        # 색상: 중량물은 빨강, 일반은 깔끔한 카드보드(베이지) 색
+        base_color = '#ff4b4b' if getattr(item, 'is_heavy', False) else '#deb887' 
+        
+        x, y, z = item.x, item.y, item.z
+        w, h, d = item.w, item.h, item.d
+        
+        # 박스 메쉬 (Vertex 방식)
+        fig.add_trace(go.Mesh3d(
+            x=[x, x+w, x+w, x, x, x+w, x+w, x],
+            y=[y, y, y+d, y+d, y, y, y+d, y+d],
+            z=[z, z, z, z, z+h, z+h, z+h, z+h],
+            i=[7, 0, 0, 0, 4, 4, 6, 6, 4, 0, 3, 2],
+            j=[3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3],
+            k=[0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6],
+            color=base_color, opacity=1.0, flatshading=True,
+            name=item.name,
+            # Hover 정보 강화
+            hovertemplate=f"<b>📦 {item.name}</b><br>크기: {int(w)}x{int(d)}x{int(h)}<br>중량: {int(item.weight)}kg<extra></extra>"
+        ))
+        
+        # 박스 테두리 (검정색 실선) - 시인성 확보
+        edges_x = [x, x+w, x+w, x, x, None, x, x+w, x+w, x, x, None, x, x, None, x+w, x+w, None, x+w, x+w, None, x, x]
+        edges_y = [y, y, y+d, y+d, y, None, y, y, y+d, y+d, y, None, y, y, None, y, y, None, y+d, y+d, None, y+d, y+d]
+        edges_z = [z, z, z, z, z, None, z+h, z+h, z+h, z+h, z+h, None, z, z+h, None, z, z+h, None, z, z+h, None, z, z+h]
+        
+        fig.add_trace(go.Scatter3d(
+            x=edges_x, y=edges_y, z=edges_z,
+            mode='lines', line=dict(color='black', width=2),
+            showlegend=False, hoverinfo='skip'
+        ))
 
-    if camera_view == "top": eye = dict(x=0, y=0.1, z=2.5); up = dict(x=0, y=1, z=0)
-    elif camera_view == "side": eye = dict(x=2.5, y=0, z=0.5); up = dict(x=0, y=0, z=1)
-    else: eye = dict(x=2.0, y=-1.5, z=1.2); up = dict(x=0, y=0, z=1)
+        # 텍스트 라벨 (박스 중앙)
+        cx, cy, cz = x + w/2, y + d/2, z + h/2
+        annotations.append(dict(
+            x=cx, y=cy, z=cz, text=f"<b>{item.name}</b>",
+            xanchor="center", yanchor="middle", showarrow=False,
+            font=dict(color="white" if getattr(item, 'is_heavy', False) else "black", size=11),
+            bgcolor="rgba(0,0,0,0.3)" if getattr(item, 'is_heavy', False) else "rgba(255,255,255,0.5)",
+            borderpad=1
+        ))
+
+    # 6. 카메라 및 레이아웃 설정
+    if camera_view == "top": 
+        eye = dict(x=0, y=0.01, z=2.5); up = dict(x=0, y=1, z=0)
+    elif camera_view == "side": 
+        eye = dict(x=2.5, y=0, z=0.2); up = dict(x=0, y=0, z=1)
+    else: # ISO (Quarter View)
+        eye = dict(x=1.8, y=-1.8, z=1.2); up = dict(x=0, y=0, z=1)
     
     fig.update_layout(
         scene=dict(
-            aspectmode='data', xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False),
-            bgcolor='white', camera=dict(eye=eye, up=up), annotations=annotations
+            aspectmode='data',
+            xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False),
+            bgcolor='white', camera=dict(eye=eye, up=up),
+            annotations=annotations
         ),
-        margin=dict(l=0,r=0,b=0,t=0), height=700,
-        uirevision=str(uuid.uuid4())
+        margin=dict(l=0, r=0, b=0, t=0), height=600,
+        uirevision=str(uuid.uuid4()) # 상태 유지
     )
     return fig
 
@@ -314,38 +365,22 @@ if uploaded_file:
         
         df_display = df.copy()
         
-        rename_map = {
-            '폭': '폭 (mm)', 
-            '높이': '높이 (mm)', 
-            '길이': '길이 (mm)', 
-            '중량': '중량 (kg)'
-        }
-        df_display.rename(columns=rename_map, inplace=True)
-        
-        # [핵심 수정 1] 숫자 데이터를 문자열로 변환하여 강제 왼쪽(혹은 중앙) 정렬 유도
-        # 1. 컬럼명을 돌면서 숫자를 문자열로 변환 (천단위 콤마 적용)
+        # 숫자를 문자열로 변환하여 강제 왼쪽(중앙) 정렬 유도
         cols_to_format = [c for c in ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)'] if c in df_display.columns]
         for col in cols_to_format:
             df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}")
         
-        # 2. 박스번호도 문자열로 변환 (이렇게 하면 Streamlit이 텍스트로 인식하여 왼쪽 정렬함)
         if '박스번호' in df_display.columns:
             df_display['박스번호'] = df_display['박스번호'].astype(str)
 
-        # 3. 오류를 유발했던 column_config는 제거하고 Styler만 적용
-        # (Streamlit 최신버전이 아니어도 pandas 스타일은 먹힐 가능성이 높음)
+        # Pandas Styler 적용
         styler = df_display.style.set_properties(**{'text-align': 'center'})
         styler.set_table_styles([
             {'selector': 'th', 'props': [('text-align', 'center')]},
             {'selector': 'td', 'props': [('text-align', 'center')]}
         ])
         
-        st.dataframe(
-            styler, 
-            use_container_width=True, 
-            hide_index=True, 
-            height=250
-        )
+        st.dataframe(styler, use_container_width=True, hide_index=True, height=250)
 
         st.subheader("🚛 차량 기준 정보")
         
@@ -360,7 +395,6 @@ if uploaded_file:
             })
         df_truck = pd.DataFrame(truck_rows)
         
-        # [핵심 수정 2] 차량 데이터도 모두 문자열로 변환 (천단위 콤마 포함)
         format_cols_truck = ['적재폭 (mm)', '적재길이 (mm)', '허용하중 (kg)', '운송단가']
         for col in format_cols_truck:
              df_truck[col] = df_truck[col].apply(lambda x: f"{x:,.0f}")
@@ -371,11 +405,7 @@ if uploaded_file:
             {'selector': 'td', 'props': [('text-align', 'center')]}
         ])
 
-        st.dataframe(
-            st_truck, 
-            use_container_width=True, 
-            hide_index=True
-        )
+        st.dataframe(st_truck, use_container_width=True, hide_index=True)
 
         if st.button("최적 배차 실행 (최소비용)", type="primary"):
             st.session_state['run_result'] = load_data(df)
