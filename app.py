@@ -4,11 +4,9 @@ import plotly.graph_objects as go
 from py3dbp import Packer, Bin, Item
 
 # ==========================================
-# 0. [핵심] 회전 금지 강제 패치
+# 0. [핵심] 회전 금지 강제 패치 (안전한 버전)
 # ==========================================
-# py3dbp 라이브러리가 박스를 돌려가며 적재를 시도하는 것을 막습니다.
-# 오직 엑셀에 입력된 방향 그대로(Rotation Type 0)만 적재를 시도하게 함수를 덮어씁니다.
-
+# py3dbp 라이브러리가 박스를 돌리는 것을 원천 차단합니다.
 def no_rotation_put_item(self, item, pivot):
     fit = False
     valid_item_position = item.position
@@ -54,11 +52,16 @@ def create_items_from_df(df):
     items = []
     # 색상 강조를 위한 중량 상위 10% 기준 계산
     try:
+        # 문자열이 섞여있을 수 있으므로 숫자로 변환
         weights = pd.to_numeric(df['중량'], errors='coerce').dropna().tolist()
+        if not weights:
+            return []
+            
         sorted_weights = sorted(weights, reverse=True)
+        # 상위 10% 인덱스 계산
         top10_idx = max(0, int(len(weights) * 0.1) - 1)
-        heavy_threshold = sorted_weights[top10_idx] if weights else 999999
-    except:
+        heavy_threshold = sorted_weights[top10_idx]
+    except Exception as e:
         heavy_threshold = 999999
 
     for index, row in df.iterrows():
@@ -123,7 +126,10 @@ def get_optimized_trucks(items):
                     # 2. 다 못 싣는다면 -> 꽉 채우는(효율 좋은) 트럭 선호
                     util_weight = temp_bin.get_total_weight() / spec['weight']
                     vol_denom = (spec['w'] * CALC_HEIGHT * spec['l'])
-                    util_vol = sum([i.width * i.height * i.depth for i in temp_bin.items]) / (vol_denom if vol_denom else 1)
+                    # 0으로 나누기 방지
+                    if vol_denom == 0: vol_denom = 1
+                    
+                    util_vol = sum([i.width * i.height * i.depth for i in temp_bin.items]) / vol_denom
                     score = (util_weight + util_vol) * 100
                 
                 if score > best_score:
@@ -227,43 +233,49 @@ uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['x
 
 if uploaded_file:
     # 파일 읽기
-    if uploaded_file.name.endswith('.csv'):
-        df = pd.read_csv(uploaded_file)
-    else:
-        df = pd.read_excel(uploaded_file)
-        
-    st.subheader(f"📋 데이터 확인 ({len(df)}건)")
-    st.dataframe(df)
-
-    if st.button("최적 배차 실행", type="primary"):
-        items = create_items_from_df(df)
-        if items:
-            with st.spinner("최적의 차량을 계산 중입니다..."):
-                trucks = get_optimized_trucks(items)
-                
-                if trucks:
-                    t_names = [t.name.split(' ')[0] for t in trucks]
-                    from collections import Counter
-                    cnt = Counter(t_names)
-                    summary = ", ".join([f"{k} {v}대" for k,v in cnt.items()])
-                    
-                    st.success(f"✅ 배차 완료: 총 {len(trucks)}대 ({summary})")
-                    
-                    tabs = st.tabs([t.name for t in trucks])
-                    for i, tab in enumerate(tabs):
-                        with tab:
-                            col1, col2 = st.columns([1, 3])
-                            t = trucks[i]
-                            with col1:
-                                st.markdown(f"### **{t.name}**")
-                                st.write(f"- 박스 수: {len(t.items)}개")
-                                st.write(f"- 적재 중량: {t.get_total_weight():,} kg")
-                                st.write(f"- 적재 부피율: {t.get_volume_utilization():.1f}%")
-                                with st.expander("적재 상세 목록"):
-                                    st.write(", ".join([item.name for item in t.items]))
-                            with col2:
-                                st.plotly_chart(create_3d_figure(t), use_container_width=True)
-                else:
-                    st.warning("적재할 수 있는 차량을 찾지 못했습니다. (규격 초과 등)")
+    try:
+        if uploaded_file.name.endswith('.csv'):
+            df = pd.read_csv(uploaded_file)
         else:
-            st.error("데이터를 처리할 수 없습니다.")
+            df = pd.read_excel(uploaded_file)
+            
+        st.subheader(f"📋 데이터 확인 ({len(df)}건)")
+        st.dataframe(df)
+
+        if st.button("최적 배차 실행", type="primary"):
+            items = create_items_from_df(df)
+            if items:
+                with st.spinner("최적의 차량을 계산 중입니다..."):
+                    try:
+                        trucks = get_optimized_trucks(items)
+                        
+                        if trucks:
+                            t_names = [t.name.split(' ')[0] for t in trucks]
+                            from collections import Counter
+                            cnt = Counter(t_names)
+                            summary = ", ".join([f"{k} {v}대" for k,v in cnt.items()])
+                            
+                            st.success(f"✅ 배차 완료: 총 {len(trucks)}대 ({summary})")
+                            
+                            tabs = st.tabs([t.name for t in trucks])
+                            for i, tab in enumerate(tabs):
+                                with tab:
+                                    col1, col2 = st.columns([1, 3])
+                                    t = trucks[i]
+                                    with col1:
+                                        st.markdown(f"### **{t.name}**")
+                                        st.write(f"- 박스 수: {len(t.items)}개")
+                                        st.write(f"- 적재 중량: {t.get_total_weight():,} kg")
+                                        st.write(f"- 적재 부피율: {t.get_volume_utilization():.1f}%")
+                                        with st.expander("적재 상세 목록"):
+                                            st.write(", ".join([item.name for item in t.items]))
+                                    with col2:
+                                        st.plotly_chart(create_3d_figure(t), use_container_width=True)
+                        else:
+                            st.warning("적재할 수 있는 차량을 찾지 못했습니다. (규격 초과 등)")
+                    except Exception as e:
+                        st.error(f"계산 중 상세 오류 발생: {e}")
+            else:
+                st.error("데이터를 처리할 수 없습니다. 컬럼명(박스번호, 폭, 높이, 길이, 중량)을 확인해주세요.")
+    except Exception as e:
+        st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
