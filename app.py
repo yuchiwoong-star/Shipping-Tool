@@ -300,7 +300,6 @@ def draw_truck_3d(truck, camera_view="iso"):
 # 5. 메인 UI
 # ==========================================
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
-# [수정 2] 캡션 텍스트 변경
 st.caption("✅ 규칙 : 비용최적화 | 부피순 적재 | 회전금지 | 1.3m 제한 | 80% 지지충족 | 하중제한 준수 | 상위 10% 중량박스 빨간색 표시")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 
@@ -323,12 +322,19 @@ if uploaded_file:
         }
         df_display.rename(columns=rename_map, inplace=True)
         
+        # [핵심 수정 1] 숫자 데이터를 문자열로 변환하여 강제 왼쪽(혹은 중앙) 정렬 유도
+        # 1. 컬럼명을 돌면서 숫자를 문자열로 변환 (천단위 콤마 적용)
         cols_to_format = [c for c in ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)'] if c in df_display.columns]
-        format_dict = {c: '{:,.0f}' for c in cols_to_format}
+        for col in cols_to_format:
+            df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}")
         
-        # [수정 1] 오류 발생 코드 제거 및 Pandas Styler만 적용 (호환성 최우선)
-        styler = df_display.style.format(format_dict).set_properties(**{'text-align': 'center'})
-        # 헤더와 셀 강제 중앙 정렬 시도 (일부 Streamlit 버전에서는 무시될 수 있음)
+        # 2. 박스번호도 문자열로 변환 (이렇게 하면 Streamlit이 텍스트로 인식하여 왼쪽 정렬함)
+        if '박스번호' in df_display.columns:
+            df_display['박스번호'] = df_display['박스번호'].astype(str)
+
+        # 3. 오류를 유발했던 column_config는 제거하고 Styler만 적용
+        # (Streamlit 최신버전이 아니어도 pandas 스타일은 먹힐 가능성이 높음)
+        styler = df_display.style.set_properties(**{'text-align': 'center'})
         styler.set_table_styles([
             {'selector': 'th', 'props': [('text-align', 'center')]},
             {'selector': 'td', 'props': [('text-align', 'center')]}
@@ -354,14 +360,12 @@ if uploaded_file:
             })
         df_truck = pd.DataFrame(truck_rows)
         
-        format_dict_truck = {
-            '적재폭 (mm)': '{:,.0f}',
-            '적재길이 (mm)': '{:,.0f}',
-            '허용하중 (kg)': '{:,.0f}',
-            '운송단가': '{:,.0f}'
-        }
+        # [핵심 수정 2] 차량 데이터도 모두 문자열로 변환 (천단위 콤마 포함)
+        format_cols_truck = ['적재폭 (mm)', '적재길이 (mm)', '허용하중 (kg)', '운송단가']
+        for col in format_cols_truck:
+             df_truck[col] = df_truck[col].apply(lambda x: f"{x:,.0f}")
         
-        st_truck = df_truck.style.format(format_dict_truck).set_properties(**{'text-align': 'center'})
+        st_truck = df_truck.style.set_properties(**{'text-align': 'center'})
         st_truck.set_table_styles([
             {'selector': 'th', 'props': [('text-align', 'center')]},
             {'selector': 'td', 'props': [('text-align', 'center')]}
