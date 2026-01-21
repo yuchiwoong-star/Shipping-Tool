@@ -202,7 +202,7 @@ def run_optimization(all_items):
     return final_trucks
 
 # ==========================================
-# 4. 시각화 (UI 디자인 고도화 - 에러 수정됨)
+# 4. 시각화 (좌표계 & 바운더리 개선)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -253,22 +253,36 @@ def draw_truck_3d(truck, camera_view="iso"):
     lines_x = [0,W,W,0,0, 0,W,W,0,0, W,W,0,0, W,W]; lines_y = [0,0,L,L,0, 0,0,L,L,0, 0,0,L,L, L,L]; lines_z = [0,0,0,0,0, Real_H,Real_H,Real_H,Real_H,Real_H, 0,Real_H,Real_H,0, 0,Real_H]
     fig.add_trace(go.Scatter3d(x=lines_x, y=lines_y, z=lines_z, mode='lines', line=dict(color=frame_color, width=frame_width), showlegend=False, hoverinfo='skip'))
 
-    # [4] 치수선 (Dimensions)
-    OFFSET = 1200 
-    def add_dimension(p1, p2, label, color='black'):
-        fig.add_trace(go.Scatter3d(x=[p1[0], p2[0]], y=[p1[1], p2[1]], z=[p1[2], p2[2]], mode='lines', line=dict(color=color, width=2), showlegend=False))
-        vec = np.array(p2) - np.array(p1); length = np.linalg.norm(vec)
-        if length > 0:
-            uvw = vec / length
-            fig.add_trace(go.Cone(x=[p2[0]], y=[p2[1]], z=[p2[2]], u=[uvw[0]], v=[uvw[1]], w=[uvw[2]], sizemode="absolute", sizeref=200, anchor="tip", showscale=False, colorscale=[[0, color], [1, color]]))
-            fig.add_trace(go.Cone(x=[p1[0]], y=[p1[1]], z=[p1[2]], u=[-uvw[0]], v=[-uvw[1]], w=[-uvw[2]], sizemode="absolute", sizeref=200, anchor="tip", showscale=False, colorscale=[[0, color], [1, color]]))
-        mid = [(p1[0]+p2[0])/2, (p1[1]+p2[1])/2, (p1[2]+p2[2])/2]
-        fig.add_trace(go.Scatter3d(x=[mid[0]], y=[mid[1]], z=[mid[2]], mode='text', text=[f"<b>{label}</b>"], textfont=dict(size=14, color=color, family="Arial"), showlegend=False))
+    # [4] 적재 공간 바운더리 (Red Box & Dimensions) - 직접 그리기
+    # (1) 적재 가능한 1.3m 영역 빨간색 실선 박스
+    bx = [0, W, W, 0, 0, 0, W, W, 0, 0, W, W, 0, 0, W, W]
+    by = [0, 0, L, L, 0, 0, 0, L, L, 0, 0, 0, L, L, L, L]
+    bz = [0, 0, 0, 0, 0, LIMIT_H, LIMIT_H, LIMIT_H, LIMIT_H, LIMIT_H, 0, LIMIT_H, LIMIT_H, 0, 0, LIMIT_H]
+    fig.add_trace(go.Scatter3d(x=bx, y=by, z=bz, mode='lines', line=dict(color='red', width=4), name='적재한계선', showlegend=False))
     
-    add_dimension((0, -OFFSET, 0), (W, -OFFSET, 0), f"폭 : {int(W)}")
-    add_dimension((-OFFSET, 0, 0), (-OFFSET, L, 0), f"길이 : {int(L)}")
-    add_dimension((-OFFSET, L, 0), (-OFFSET, L, LIMIT_H), f"높이제한(최대4단) : {int(LIMIT_H)}", color='red')
-    fig.add_trace(go.Scatter3d(x=[0,W,W,0,0], y=[0,0,L,L,0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False))
+    # (2) 바닥 그리드 및 좌표 텍스트 (직접 구현)
+    grid_color = 'rgba(100, 100, 100, 0.3)'
+    grid_lines_x, grid_lines_y, grid_lines_z = [], [], []
+    text_x, text_y, text_z, text_val = [], [], [], []
+    
+    # X축 그리드 (가로선)
+    for x_pos in range(0, int(W) + 1, 1000): # 1000mm 간격
+        grid_lines_x.extend([x_pos, x_pos, None])
+        grid_lines_y.extend([0, L, None])
+        grid_lines_z.extend([0, 0, None])
+        # 좌표 텍스트
+        text_x.append(x_pos); text_y.append(-100); text_z.append(0); text_val.append(f"{x_pos}")
+
+    # Y축 그리드 (세로선)
+    for y_pos in range(0, int(L) + 1, 1000): # 1000mm 간격
+        grid_lines_x.extend([0, W, None])
+        grid_lines_y.extend([y_pos, y_pos, None])
+        grid_lines_z.extend([0, 0, None])
+        # 좌표 텍스트
+        text_x.append(-100); text_y.append(y_pos); text_z.append(0); text_val.append(f"{y_pos}")
+
+    fig.add_trace(go.Scatter3d(x=grid_lines_x, y=grid_lines_y, z=grid_lines_z, mode='lines', line=dict(color=grid_color, width=2), showlegend=False))
+    fig.add_trace(go.Scatter3d(x=text_x, y=text_y, z=text_z, mode='text', text=text_val, textfont=dict(size=10, color='black'), showlegend=False))
 
     # [5] 박스 (Boxes)
     annotations = []
@@ -281,33 +295,18 @@ def draw_truck_3d(truck, camera_view="iso"):
         cx, cy, cz = x + w/2, y + d/2, z + h/2
         annotations.append(dict(x=cx, y=cy, z=cz, text=f"<b>{item.name}</b>", xanchor="center", yanchor="middle", showarrow=False, font=dict(color="white" if getattr(item, 'is_heavy', False) else "black", size=14, family="Arial Black"), bgcolor="rgba(0, 0, 0, 0.6)" if getattr(item, 'is_heavy', False) else "rgba(255, 255, 255, 0.7)", borderpad=2))
 
-    # [6] 뷰 설정 (Grid & Red Box) - [수정됨] titlefont 제거 후 update_layout에서 처리
+    # [6] 뷰 설정 (Axis Off -> Custom Grid)
     if camera_view == "top": eye = dict(x=0, y=0.1, z=2.5); up = dict(x=0, y=1, z=0)
     elif camera_view == "side": eye = dict(x=2.5, y=0, z=0.5); up = dict(x=0, y=0, z=1)
     else: eye = dict(x=2.0, y=-1.5, z=1.2); up = dict(x=0, y=0, z=1)
     
-    # 공통 축 설정 (titlefont 삭제됨)
-    axis_config = dict(
-        showbackground=False,
-        showgrid=True,
-        gridcolor='rgba(200, 200, 200, 0.5)',
-        gridwidth=1,
-        dtick=1000, 
-        showline=True,
-        linewidth=2,
-        linecolor='red', 
-        mirror=True,
-        showticklabels=True, 
-        tickfont=dict(size=10)
-    )
-    
     fig.update_layout(
         scene=dict(
             aspectmode='data', 
-            # 타이틀을 딕셔너리로 설정하여 폰트 적용
-            xaxis=dict(**axis_config, title=dict(text='Width (mm)', font=dict(size=10))),
-            yaxis=dict(**axis_config, title=dict(text='Length (mm)', font=dict(size=10))),
-            zaxis=dict(**axis_config, title=dict(text='Height (mm)', font=dict(size=10))),
+            # 기본 축은 숨기고 직접 그린 그리드만 보이게 설정
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False),
+            zaxis=dict(visible=False),
             bgcolor='white', camera=dict(eye=eye, up=up), annotations=annotations
         ),
         margin=dict(l=0,r=0,b=0,t=0), height=700,
