@@ -170,7 +170,7 @@ def run_optimization(all_items):
     return used_trucks
 
 # ==========================================
-# 4. 시각화 (디자인 대폭 수정: 사실적인 바퀴)
+# 4. 시각화 (디자인 대폭 수정: 2축 바퀴 + 세련된 컨테이너)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -178,100 +178,84 @@ def draw_truck_3d(truck, camera_view="iso"):
     W, L, Real_H = spec['w'], spec['l'], spec['real_h']
     LIMIT_H = 1300
     
-    # --- [1] 트럭 디자인 ---
+    # --- [1] 트럭 디자인 (2축 바퀴, 컨테이너) ---
     
-    # 1. 섀시 (Chassis)
-    chassis_h = 150
+    # 1. 섀시 (Chassis) - 하부 H빔 프레임 느낌
+    chassis_h = 180
+    chassis_color = '#222222'
+    # 메인 프레임
     fig.add_trace(go.Mesh3d(
         x=[0, W, W, 0, 0, W, W, 0],
         y=[0, 0, L, L, 0, 0, L, L],
         z=[-chassis_h, -chassis_h, -chassis_h, -chassis_h, 0, 0, 0, 0],
         i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6],
-        color='#333333', flatshading=True, name='섀시'
+        color=chassis_color, flatshading=True, name='섀시', showlegend=False
     ))
+    # 하부 구조물 (연료탱크 등 - 단순 박스)
+    tank_w, tank_d, tank_h = 400, 800, 300
+    tank_x_l, tank_x_r = -tank_w - 50, W + 50
+    tank_y = L/2 - tank_d/2
+    tank_z = -chassis_h - tank_h
+    for tx in [tank_x_l, tank_x_r]:
+         fig.add_trace(go.Mesh3d(
+            x=[tx, tx+tank_w, tx+tank_w, tx, tx, tx+tank_w, tx+tank_w, tx],
+            y=[tank_y, tank_y, tank_y+tank_d, tank_y+tank_d, tank_y, tank_y, tank_y+tank_d, tank_y+tank_d],
+            z=[tank_z, tank_z, tank_z, tank_z, tank_z+tank_h, tank_z+tank_h, tank_z+tank_h, tank_z+tank_h],
+            i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6],
+            color='#444444', flatshading=True, showlegend=False
+        ))
 
-    # 2. 바퀴 (사실적인 디자인 - 타이어 트레드 & 휠 허브)
-    def create_realistic_wheel(cx, cy, cz, r, w):
-        # (1) 타이어 본체 (검은색 고무)
-        theta = np.linspace(0, 2*np.pi, 64) # 더 부드럽게
-        x_tire, y_tire, z_tire = [], [], []
+    # 2. 바퀴 (Round Wheels - 32각형, 2축 4륜)
+    def create_cylinder(cx, cy, cz, r, w, axis='x', color='#111111'):
+        theta = np.linspace(0, 2*np.pi, 32)
+        x, y, z = [], [], []
         for t in theta:
-            x_tire.extend([cx - w/2, cx + w/2])
-            y_tire.extend([cy + r*np.cos(t), cy + r*np.cos(t)])
-            z_tire.extend([cz + r*np.sin(t), cz + r*np.sin(t)])
-        fig.add_trace(go.Mesh3d(x=x_tire, y=y_tire, z=z_tire, alphahull=0, color='#1c1c1c', flatshading=True, showlegend=False, name='타이어'))
-
-        # (2) 타이어 트레드 (Tread Pattern - 격자무늬 라인)
-        tread_lines_x, tread_lines_y, tread_lines_z = [], [], []
-        num_treads = 16
-        for i in range(num_treads):
-            t1 = (2 * math.pi / num_treads) * i
-            t2 = (2 * math.pi / num_treads) * (i + 0.5)
-            # 가로 라인
-            tread_lines_x.extend([cx - w/2, cx + w/2, None])
-            tread_lines_y.extend([cy + r*math.cos(t1), cy + r*math.cos(t1), None])
-            tread_lines_z.extend([cz + r*math.sin(t1), cz + r*math.sin(t1), None])
-            # 사선 라인 (지그재그)
-            tread_lines_x.extend([cx - w/2, cx, cx + w/2, None])
-            tread_lines_y.extend([cy + r*math.cos(t1), cy + r*math.cos(t2), cy + r*math.cos(t1), None])
-            tread_lines_z.extend([cz + r*math.sin(t1), cz + r*math.sin(t2), cz + r*math.sin(t1), None])
-
-        fig.add_trace(go.Scatter3d(x=tread_lines_x, y=tread_lines_y, z=tread_lines_z, mode='lines', line=dict(color='#000000', width=2), showlegend=False, name='트레드'))
-        
-        # (3) 휠 허브 (Wheel Hub - 은색 입체)
-        hub_r = r * 0.6 # 허브 반지름
-        hub_w = w * 0.2 # 허브 튀어나온 정도
-        # 바깥쪽 허브 (보이는 쪽)
-        theta_hub = np.linspace(0, 2*np.pi, 32)
-        x_hub, y_hub, z_hub = [], [], []
-        # 중앙 포인트
-        x_hub.append(cx + w/2 + hub_w)
-        y_hub.append(cy)
-        z_hub.append(cz)
-        # 테두리 포인트
-        for t in theta_hub:
-            x_hub.append(cx + w/2)
-            y_hub.append(cy + hub_r*math.cos(t))
-            z_hub.append(cz + hub_r*math.sin(t))
-        
-        # 부채꼴 모양으로 면 생성 (Triangle Fan)
-        i_hub = [0] * 32
-        j_hub = list(range(1, 33))
-        k_hub = list(range(2, 33)) + [1]
-        
-        fig.add_trace(go.Mesh3d(x=x_hub, y=y_hub, z=z_hub, i=i_hub, j=j_hub, k=k_hub, color='#c0c0c0', flatshading=False, showlegend=False, name='휠 허브', lighting=dict(ambient=0.5, diffuse=0.8, specular=1.0, roughness=0.1)))
-        
-        # 볼트 구멍 (작은 검은 점들)
-        num_bolts = 6
-        bolt_r = hub_r * 0.6
-        bolt_x, bolt_y, bolt_z = [], [], []
-        for i in range(num_bolts):
-            t = (2 * math.pi / num_bolts) * i
-            bolt_x.append(cx + w/2 + hub_w * 0.8)
-            bolt_y.append(cy + bolt_r*math.cos(t))
-            bolt_z.append(cz + bolt_r*math.sin(t))
-        fig.add_trace(go.Scatter3d(x=bolt_x, y=bolt_y, z=bolt_z, mode='markers', marker=dict(color='black', size=3), showlegend=False, name='휠 볼트'))
-
+            x.extend([cx - w/2, cx + w/2])
+            y.extend([cy + r*np.cos(t), cy + r*np.cos(t)])
+            z.extend([cz + r*np.sin(t), cz + r*np.sin(t)])
+        return go.Mesh3d(x=x, y=y, z=z, alphahull=0, color=color, flatshading=True, showlegend=False)
 
     wheel_r = 450
     wheel_w = 280
     wheel_z = -chassis_h - 100
-    wheel_pos = [(-wheel_w/2, L*0.18), (W+wheel_w/2, L*0.18), (-wheel_w/2, L*0.82), (W+wheel_w/2, L*0.82)]
+    # [수정] 2축 바퀴 위치 (앞축 2개, 뒤축 2개)
+    wheel_pos = [
+        (-wheel_w/2, L*0.15), (W+wheel_w/2, L*0.15), # 앞축 1
+        (-wheel_w/2, L*0.30), (W+wheel_w/2, L*0.30), # 앞축 2
+        (-wheel_w/2, L*0.70), (W+wheel_w/2, L*0.70), # 뒤축 1
+        (-wheel_w/2, L*0.85), (W+wheel_w/2, L*0.85)  # 뒤축 2
+    ]
     for wx, wy in wheel_pos:
-        create_realistic_wheel(wx, wy, wheel_z, wheel_r, wheel_w)
+        fig.add_trace(create_cylinder(wx, wy, wheel_z, wheel_r, wheel_w))
 
-    # 3. 적재함 벽면 (현대적인 반투명 재질 - 기존 유지)
-    wall_color = '#e0e0e0' 
-    wall_opacity = 0.3     
-    fig.add_trace(go.Mesh3d(x=[0, 0, 0, 0, W, W, W, W], y=[0, L, L, 0, 0, L, L, 0], z=[0, 0, Real_H, Real_H, 0, 0, Real_H, Real_H], i=[0, 0, 4, 4], j=[1, 2, 5, 6], k=[2, 3, 6, 7], color=wall_color, opacity=wall_opacity, flatshading=True, showlegend=False))
-    fig.add_trace(go.Mesh3d(x=[0, W, W, 0], y=[L, L, L, L], z=[0, 0, Real_H, Real_H], i=[0, 0], j=[1, 2], k=[2, 3], color=wall_color, opacity=wall_opacity, flatshading=True, showlegend=False))
-    fig.add_trace(go.Mesh3d(x=[0, W, W, 0], y=[0, 0, 0, 0], z=[0, 0, Real_H, Real_H], i=[0, 0], j=[1, 2], k=[2, 3], color=wall_color, opacity=wall_opacity, flatshading=True, showlegend=False))
+    # 3. 적재함 (현대적인 컨테이너 박스)
+    wall_color = '#e0e0e0' # 밝은 회색 (반투명)
+    wall_opacity = 0.4     
+    frame_color = '#555555' # 진한 회색 프레임
+    frame_width = 8 # 프레임 두께
 
-    # 4. 적재함 프레임 (세련된 진한 회색 - 기존 유지)
+    # (A) 벽면 (유리/아크릴 느낌)
+    # 옆면(좌우)
+    fig.add_trace(go.Mesh3d(x=[0,0,0,0, W,W,W,W], y=[0,L,L,0, 0,L,L,0], z=[0,0,Real_H,Real_H, 0,0,Real_H,Real_H], i=[0,0,4,4], j=[1,2,5,6], k=[2,3,6,7], color=wall_color, opacity=wall_opacity, flatshading=True, showlegend=False))
+    # 앞면
+    fig.add_trace(go.Mesh3d(x=[0,W,W,0], y=[L,L,L,L], z=[0,0,Real_H,Real_H], i=[0,0], j=[1,2], k=[2,3], color=wall_color, opacity=wall_opacity, flatshading=True, showlegend=False))
+    # 뒷면 (문)
+    fig.add_trace(go.Mesh3d(x=[0,W,W,0], y=[0,0,0,0], z=[0,0,Real_H,Real_H], i=[0,0], j=[1,2], k=[2,3], color=wall_color, opacity=wall_opacity, flatshading=True, showlegend=False))
+
+    # (B) 프레임 (외곽선) - 기존 선 유지
     lines_x = [0,W,W,0,0, 0,W,W,0,0, W,W,0,0, W,W]
     lines_y = [0,0,L,L,0, 0,0,L,L,0, 0,0,L,L, L,L]
     lines_z = [0,0,0,0,0, Real_H,Real_H,Real_H,Real_H,Real_H, 0,Real_H,Real_H,0, 0,Real_H]
-    fig.add_trace(go.Scatter3d(x=lines_x, y=lines_y, z=lines_z, mode='lines', line=dict(color='#555555', width=4), showlegend=False))
+    fig.add_trace(go.Scatter3d(x=lines_x, y=lines_y, z=lines_z, mode='lines', line=dict(color=frame_color, width=frame_width), showlegend=False))
+
+    # (C) 후면 도어 디테일 (문틈, 손잡이)
+    # 문틈 (중앙 수직선)
+    fig.add_trace(go.Scatter3d(x=[W/2, W/2], y=[0, 0], z=[0, Real_H], mode='lines', line=dict(color=frame_color, width=4), showlegend=False))
+    # 손잡이 (양쪽)
+    handle_h, handle_w = 200, 50
+    handle_z = Real_H * 0.4
+    fig.add_trace(go.Scatter3d(x=[W/2-handle_w, W/2-handle_w], y=[0, 0], z=[handle_z, handle_z+handle_h], mode='lines', line=dict(color='black', width=6), showlegend=False))
+    fig.add_trace(go.Scatter3d(x=[W/2+handle_w, W/2+handle_w], y=[0, 0], z=[handle_z, handle_z+handle_h], mode='lines', line=dict(color='black', width=6), showlegend=False))
 
 
     # --- [2] 치수선 (기존 유지: 화살표 <->) ---
