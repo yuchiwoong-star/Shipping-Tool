@@ -84,7 +84,7 @@ class Truck:
         return support_area >= item_area * 0.8
 
 # ==========================================
-# 2. 설정 및 데이터 (비용 데이터 유지)
+# 2. 설정 및 데이터 (기존 유지)
 # ==========================================
 st.set_page_config(layout="wide", page_title="Ultimate Load Planner (Cost Optimized)")
 
@@ -100,7 +100,7 @@ TRUCK_DB = {
 }
 
 # ==========================================
-# 3. 로직 함수 (Lookahead 최적화 유지)
+# 3. 로직 함수 (기존 유지)
 # ==========================================
 def load_data(df):
     items = []
@@ -133,7 +133,6 @@ def load_data(df):
     return items
 
 def run_optimization(all_items):
-    # [Helper] 나머지 아이템 해결 (Greedy)
     def solve_remaining_greedy(current_items):
         used = []
         rem = current_items[:]
@@ -166,7 +165,6 @@ def run_optimization(all_items):
             rem = [i for i in rem if i.name not in packed_n]
         return used
 
-    # [Main] Lookahead Strategy
     best_solution = None
     min_total_cost = float('inf')
     
@@ -213,11 +211,9 @@ def draw_truck_3d(truck, camera_view="iso"):
     W, L, Real_H = spec['w'], spec['l'], spec['real_h']
     LIMIT_H = 1300
     
-    # Chassis
     chassis_h = 180
     fig.add_trace(go.Mesh3d(x=[0, W, W, 0, 0, W, W, 0], y=[0, 0, L, L, 0, 0, L, L], z=[-chassis_h, -chassis_h, -chassis_h, -chassis_h, 0, 0, 0, 0], i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6], color='#222222', flatshading=True, showlegend=False))
 
-    # Wheels
     def create_realistic_wheel(cx, cy, cz, r, w):
         theta = np.linspace(0, 2*np.pi, 32)
         x_tire, y_tire, z_tire = [], [], []
@@ -246,7 +242,6 @@ def draw_truck_3d(truck, camera_view="iso"):
     wheel_pos = [(-wheel_w/2, L*0.15), (W+wheel_w/2, L*0.15), (-wheel_w/2, L*0.30), (W+wheel_w/2, L*0.30), (-wheel_w/2, L*0.70), (W+wheel_w/2, L*0.70), (-wheel_w/2, L*0.85), (W+wheel_w/2, L*0.85)]
     for wx, wy in wheel_pos: create_realistic_wheel(wx, wy, wheel_z, wheel_r, wheel_w)
 
-    # Walls
     wall_color_rgba = 'rgba(230, 230, 230, 0.4)'; frame_color = '#555555'; frame_width = 6
     fig.add_trace(go.Surface(x=[[0, 0], [0, 0]], y=[[0, L], [0, L]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.4, hoverinfo='skip'))
     fig.add_trace(go.Surface(x=[[W, W], [W, W]], y=[[0, L], [0, L]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.4, hoverinfo='skip'))
@@ -255,7 +250,6 @@ def draw_truck_3d(truck, camera_view="iso"):
     lines_x = [0,W,W,0,0, 0,W,W,0,0, W,W,0,0, W,W]; lines_y = [0,0,L,L,0, 0,0,L,L,0, 0,0,L,L, L,L]; lines_z = [0,0,0,0,0, Real_H,Real_H,Real_H,Real_H,Real_H, 0,Real_H,Real_H,0, 0,Real_H]
     fig.add_trace(go.Scatter3d(x=lines_x, y=lines_y, z=lines_z, mode='lines', line=dict(color=frame_color, width=frame_width), showlegend=False, hoverinfo='skip'))
 
-    # Dimensions
     OFFSET = 1200 
     def add_dimension(p1, p2, label, color='black'):
         fig.add_trace(go.Scatter3d(x=[p1[0], p2[0]], y=[p1[1], p2[1]], z=[p1[2], p2[2]], mode='lines', line=dict(color=color, width=2), showlegend=False))
@@ -272,7 +266,6 @@ def draw_truck_3d(truck, camera_view="iso"):
     add_dimension((-OFFSET, L, 0), (-OFFSET, L, LIMIT_H), f"높이제한(최대4단) : {int(LIMIT_H)}", color='red')
     fig.add_trace(go.Scatter3d(x=[0,W,W,0,0], y=[0,0,L,L,0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False))
 
-    # Boxes
     annotations = []
     for item in truck.items:
         color = '#FF0000' if getattr(item, 'is_heavy', False) else '#f39c12'
@@ -298,7 +291,7 @@ def draw_truck_3d(truck, camera_view="iso"):
     return fig
 
 # ==========================================
-# 5. 메인 UI (수정됨)
+# 5. 메인 UI (테이블 포맷팅 수정됨)
 # ==========================================
 st.title("📦 Ultimate Load Planner (Cost Optimized)")
 st.caption("✅ 비용최적화(Lookahead) | 회전금지 | 1.3m 제한 | 80% 지지충족")
@@ -312,8 +305,29 @@ if uploaded_file:
         df.columns = [c.strip() for c in df.columns]
         
         st.subheader(f"📋 데이터 확인 ({len(df)}건)")
-        # [수정됨] 행 번호(index) 숨기기 & 전체 데이터 스크롤 표시
-        st.dataframe(df, use_container_width=True, hide_index=True, height=400)
+        
+        # [수정됨] 디스플레이용 데이터프레임 생성 및 스타일 적용
+        df_display = df.copy()
+        
+        # 1. 컬럼명에 단위 추가
+        rename_map = {
+            '폭': '폭 (mm)', 
+            '높이': '높이 (mm)', 
+            '길이': '길이 (mm)', 
+            '중량': '중량 (kg)'
+        }
+        df_display.rename(columns=rename_map, inplace=True)
+        
+        # 2. 숫자 포맷팅 (천 단위 콤마)
+        # 실제 존재하는 컬럼만 필터링하여 포맷 적용
+        cols_to_format = [c for c in ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)'] if c in df_display.columns]
+        format_dict = {c: '{:,.0f}' for c in cols_to_format}
+        
+        # 3. 가운데 정렬 및 스타일 적용
+        styler = df_display.style.format(format_dict).set_properties(**{'text-align': 'center'})
+        
+        # 4. 렌더링 (인덱스 숨김, 전체 스크롤)
+        st.dataframe(styler, use_container_width=True, hide_index=True, height=400)
         
         if st.button("최적 배차 실행 (최소비용)", type="primary"):
             st.session_state['run_result'] = load_data(df)
