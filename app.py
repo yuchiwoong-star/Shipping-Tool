@@ -1,10 +1,11 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import numpy as np # [수정] 누락된 라이브러리 추가
 import math
 
 # ==========================================
-# 1. 커스텀 물리 엔진 (기존 로직 100% 동결)
+# 1. 커스텀 물리 엔진 (기존 규칙 100% 동결)
 # ==========================================
 # ※ 로직 수정 없음 (회전금지, 중력, 높이제한, 최적화 그대로)
 
@@ -102,16 +103,10 @@ TRUCK_DB = {
 def load_data(df):
     items = []
     try:
-        # 중량 데이터 전처리
         weights = pd.to_numeric(df['중량'], errors='coerce').dropna().tolist()
         sorted_weights = sorted(weights, reverse=True)
-        # 상위 10% 기준값 계산
-        if not weights:
-            heavy_threshold = 999999
-        else:
-            # 개수가 적을 경우 최소 1개는 포함되도록
-            top10_count = max(1, int(len(weights) * 0.1))
-            heavy_threshold = sorted_weights[top10_count - 1]
+        top10_idx = max(0, int(len(weights) * 0.1) - 1)
+        heavy_threshold = sorted_weights[top10_idx] if weights else 999999
     except:
         heavy_threshold = 999999
 
@@ -175,7 +170,7 @@ def run_optimization(all_items):
     return used_trucks
 
 # ==========================================
-# 4. 고퀄리티 3D 시각화 (디자인 대폭 수정)
+# 4. 고퀄리티 3D 시각화 (디자인 & 치수선 개선)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -201,11 +196,9 @@ def draw_truck_3d(truck, camera_view="iso"):
         xs = []
         ys = []
         zs = []
-        # 원통 옆면 좌표 생성
         for t in th: xs.append(cx - w/2); ys.append(cy + r*np.cos(t)); zs.append(cz + r*np.sin(t))
         for t in th: xs.append(cx + w/2); ys.append(cy + r*np.cos(t)); zs.append(cz + r*np.sin(t))
         
-        # Mesh3d로 바퀴 그리기 (단순화된 형태)
         return go.Mesh3d(x=xs, y=ys, z=zs, alphahull=0, color='#111111', showlegend=False)
 
     wheel_r, wheel_w = 400, 250
@@ -214,12 +207,12 @@ def draw_truck_3d(truck, camera_view="iso"):
     for wx, wy in wheel_pos:
         fig.add_trace(create_wheel(wx, wy, wheel_z, wheel_r, wheel_w))
 
-    # 3. 헤드 (Cabin) - 경사진 윈드쉴드 적용
+    # 3. 헤드 (Cabin)
     cabin_len = 1600
     cabin_h = 2400
-    cy = L + 100 # 적재함과 간격
+    cy = L + 100 
     
-    # (1) 캐빈 하단부 (직육면체)
+    # 캐빈 하단부
     base_h = 1200
     fig.add_trace(go.Mesh3d(
         x=[0, W, W, 0, 0, W, W, 0],
@@ -229,28 +222,19 @@ def draw_truck_3d(truck, camera_view="iso"):
         color='#2980b9', flatshading=True, name='헤드 하단'
     ))
     
-    # (2) 캐빈 상단부 (경사짐)
-    # 앞쪽(y=L+cabin_len)은 높고, 뒤쪽(y=L)은 높게, 앞유리가 경사지게
-    # 여기서는 단순화를 위해 위쪽 박스를 하나 더 얹고 앞면을 경사지게 처리
+    # 캐빈 상단부 (경사)
     top_z = cabin_h
-    slope_y = cy + cabin_len - 400 # 윈드쉴드 경사 시작점
-    
-    # 상단부 좌표 (8개 점)
-    # 바닥4점: (0,cy,base_h), (W,cy,base_h), (W,cy+cabin_len,base_h), (0,cy+cabin_len,base_h)
-    # 천장4점: (0,cy,top_z), (W,cy,top_z), (W,slope_y,top_z), (0,slope_y,top_z) -> 앞쪽이 깎임
+    slope_y = cy + cabin_len - 400
     cx = [0, W, W, 0, 0, W, W, 0]
     cy_coords = [cy, cy, cy+cabin_len, cy+cabin_len, cy, cy, slope_y, slope_y]
     cz = [base_h, base_h, base_h, base_h, top_z, top_z, top_z, top_z]
-    
     fig.add_trace(go.Mesh3d(
         x=cx, y=cy_coords, z=cz,
         i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6],
         color='#2980b9', flatshading=True, name='헤드 상단'
     ))
 
-    # (3) 윈드쉴드 (유리창)
-    # 상단부의 경사면 좌표를 이용해 유리창 추가
-    # P1(0, slope_y, top_z), P2(W, slope_y, top_z), P3(W, cy+cabin_len, base_h), P4(0, cy+cabin_len, base_h)
+    # 윈드쉴드 (앞유리)
     fig.add_trace(go.Mesh3d(
         x=[50, W-50, W-50, 50],
         y=[slope_y, slope_y, cy+cabin_len, cy+cabin_len],
@@ -259,7 +243,7 @@ def draw_truck_3d(truck, camera_view="iso"):
         color='#aed6f1', opacity=0.9, name='Window'
     ))
 
-    # (4) 사이드 미러 (단순 박스)
+    # 사이드 미러
     mirror_w, mirror_d, mirror_h = 100, 50, 300
     mx_l, mx_r = -mirror_w, W
     my = slope_y
@@ -280,8 +264,8 @@ def draw_truck_3d(truck, camera_view="iso"):
     fig.add_trace(go.Scatter3d(x=lines_x, y=lines_y, z=lines_z, mode='lines', line=dict(color='#7f8c8d', width=3), showlegend=False))
 
 
-    # --- [2] 치수선 (Arrowhead 포함) ---
-    OFFSET = 1000 # 간격 더 벌림
+    # --- [2] 치수선 (양끝 화살표 <->) ---
+    OFFSET = 1200 
     
     def add_arrow_line(p1, p2, label, color='black'):
         # 메인 선
@@ -289,11 +273,6 @@ def draw_truck_3d(truck, camera_view="iso"):
             x=[p1[0], p2[0]], y=[p1[1], p2[1]], z=[p1[2], p2[2]],
             mode='lines', line=dict(color=color, width=2), showlegend=False
         ))
-        
-        # 화살표 끝부분 (단순화된 V자)
-        # 3D 화살표는 복잡하므로 작은 선분으로 표현
-        arrow_len = 200
-        # 방향 벡터 계산은 복잡하므로 축 정렬된 화살표만 하드코딩
         
         # 텍스트
         mid = [(p1[0]+p2[0])/2, (p1[1]+p2[1])/2, (p1[2]+p2[2])/2]
@@ -304,29 +283,29 @@ def draw_truck_3d(truck, camera_view="iso"):
             showlegend=False
         ))
         
-        # 화살표 시각화 (Scatter markers with symbol)
-        # Plotly 3D scatter doesn't rotate markers well, so we use cones for arrows
-        # Direction vector
+        # 화살표 Cone (방향 계산 및 정규화)
         dx, dy, dz = p2[0]-p1[0], p2[1]-p1[1], p2[2]-p1[2]
         length = (dx**2 + dy**2 + dz**2)**0.5
         if length > 0:
+            ndx, ndy, ndz = dx/length, dy/length, dz/length
+            # 양 끝에 화살표
             fig.add_trace(go.Cone(
                 x=[p1[0], p2[0]], y=[p1[1], p2[1]], z=[p1[2], p2[2]],
-                u=[-dx, dx], v=[-dy, dy], w=[-dz, dz], # 양쪽 끝에서 안쪽을 바라보거나 바깥을 바라보게
-                sizemode="absolute", sizeref=200, anchor="tip", showscale=False,
+                u=[-ndx, ndx], v=[-ndy, ndy], w=[-ndz, ndz], # p1은 바깥쪽, p2는 바깥쪽으로
+                sizemode="absolute", sizeref=250, anchor="tip", showscale=False,
                 colorscale=[[0, color], [1, color]]
             ))
 
     # 폭(W) : <->
-    add_arrow_line((0, -OFFSET, 0), (W, -OFFSET, 0), f"폭 : {W}mm")
+    add_arrow_line((0, -OFFSET, 0), (W, -OFFSET, 0), f"폭 : {W}")
     
     # 길이(L) : <->
-    add_arrow_line((-OFFSET, 0, 0), (-OFFSET, L, 0), f"길이 : {L}mm")
+    add_arrow_line((-OFFSET, 0, 0), (-OFFSET, L, 0), f"길이 : {L}")
     
     # 높이(H) : <->
-    add_arrow_line((-OFFSET, L, 0), (-OFFSET, L, LIMIT_H), f"높이제한(최대4단) : {LIMIT_H}mm", color='#e74c3c')
+    add_arrow_line((-OFFSET, L, 0), (-OFFSET, L, LIMIT_H), f"높이제한(최대4단) : {LIMIT_H}", color='#e74c3c')
     
-    # 높이 제한 가이드
+    # 높이 제한 가이드 (빨간 점선)
     fig.add_trace(go.Scatter3d(x=[0,W,W,0,0], y=[0,0,L,L,0], z=[LIMIT_H]*5, mode='lines', line=dict(color='#e74c3c', width=4, dash='dash'), showlegend=False))
 
 
@@ -337,13 +316,11 @@ def draw_truck_3d(truck, camera_view="iso"):
         x, y, z = item.x, item.y, item.z
         w, h, d = item.w, item.h, item.d
         
-        # 색상: 상위 10%는 확실한 빨간색(Hot Red)
+        # 색상: 상위 10%는 핫 레드 (Hot Red)
         if item.is_heavy:
-            color = '#ff0000' 
-            border_color = '#8b0000'
+            color = '#FF0000' 
         else:
             color = '#f39c12'
-            border_color = 'black'
             
         # 박스 Mesh
         fig.add_trace(go.Mesh3d(
@@ -354,7 +331,7 @@ def draw_truck_3d(truck, camera_view="iso"):
             color=color, opacity=1.0, flatshading=True, name=item.name
         ))
         
-        # 테두리 (Wireframe) - 더 진하게
+        # 테두리
         ex = [x,x+w,x+w,x,x, x,x+w,x+w,x,x, x+w,x+w,x+w,x+w, x,x]
         ey = [y,y,y+d,y+d,y, y,y,y+d,y+d,y, y,y,y+d,y+d, y+d,y+d]
         ez = [z,z,z,z,z, z+h,z+h,z+h,z+h,z+h, z,z+h,z+h,z, z,z+h]
