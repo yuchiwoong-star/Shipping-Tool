@@ -86,7 +86,7 @@ class Truck:
 # ==========================================
 # 2. 설정 및 데이터 (기존 유지)
 # ==========================================
-st.set_page_config(layout="wide", page_title="Ultimate Load Planner (Cost Optimized)")
+st.set_page_config(layout="wide", page_title="화물 적재 최적화 시스템")
 
 TRUCK_DB = {
     "1톤":   {"w": 1600, "real_h": 2350, "l": 2800,  "weight": 1490,  "cost": 78000},
@@ -297,10 +297,10 @@ def draw_truck_3d(truck, camera_view="iso"):
     return fig
 
 # ==========================================
-# 5. 메인 UI (수정됨: 캡션, 테이블 높이, 차량기준표 추가)
+# 5. 메인 UI
 # ==========================================
-st.title("📦 Ultimate Load Planner (Cost Optimized)")
-# [수정 1] 캡션에 문구 추가
+# [수정 3] 영문 타이틀 -> 적당한 한글 제목으로 변경
+st.title("📦 화물 적재 최적화 시스템 (비용 절감형)")
 st.caption("✅ 비용최적화(Lookahead) | 회전금지 | 1.3m 제한 | 80% 지지충족 | 상위 10% 중량박스 빨간색 표시")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 
@@ -311,6 +311,7 @@ if uploaded_file:
         else: df = pd.read_excel(uploaded_file)
         df.columns = [c.strip() for c in df.columns]
         
+        # [수정 1] subheader로 통일하여 글자 크기 맞춤
         st.subheader(f"📋 데이터 확인 ({len(df)}건)")
         
         df_display = df.copy()
@@ -326,13 +327,15 @@ if uploaded_file:
         cols_to_format = [c for c in ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)'] if c in df_display.columns]
         format_dict = {c: '{:,.0f}' for c in cols_to_format}
         
+        # [수정 1] 모든 컬럼 가운데 정렬 (천단위 표기 있어도 가운데 정렬 가능)
         styler = df_display.style.format(format_dict).set_properties(**{'text-align': 'center'})
         
-        # [수정 2] 테이블 높이를 400 -> 250으로 축소
+        # [수정 1] use_container_width=True로 너비 통일
         st.dataframe(styler, use_container_width=True, hide_index=True, height=250)
 
-        # [수정 3] 차량 기준 테이블 추가 (TRUCK_DB 연동)
-        st.write("🚛 **차량 기준 정보**")
+        # [수정 1] subheader로 통일
+        st.subheader("🚛 차량 기준 정보")
+        
         truck_rows = []
         for name, spec in TRUCK_DB.items():
             truck_rows.append({
@@ -344,14 +347,16 @@ if uploaded_file:
             })
         df_truck = pd.DataFrame(truck_rows)
         
-        # 차량 기준 포맷팅
         format_dict_truck = {
             '적재폭 (mm)': '{:,.0f}',
             '적재길이 (mm)': '{:,.0f}',
             '허용하중 (kg)': '{:,.0f}',
             '운송단가': '{:,.0f}'
         }
+        # [수정 1] 차량 기준표도 전체 가운데 정렬
         st_truck = df_truck.style.format(format_dict_truck).set_properties(**{'text-align': 'center'})
+        
+        # [수정 1] use_container_width=True로 너비 통일
         st.dataframe(st_truck, use_container_width=True, hide_index=True)
 
         if st.button("최적 배차 실행 (최소비용)", type="primary"):
