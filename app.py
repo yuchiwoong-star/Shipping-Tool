@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from py3dbp import Packer, Bin, Item
 
-# 1. 차량 제원 데이터 (이미지 기준)
+# 1. 차량 제원 데이터 (이미지 및 표준 제원 기준)
 TRUCK_DB = {
     "5톤":  {"w": 2350, "h": 2350, "l": 6200,  "weight": 7000},
     "8톤":  {"w": 2350, "h": 2350, "l": 7300,  "weight": 10000},
@@ -13,12 +13,10 @@ TRUCK_DB = {
 }
 COLORS = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#1A535C', '#FF9F1C', '#2B2D42', '#EF233C', '#D90429']
 
-# 2. 아이템 생성 함수 (수정된 컬럼명 반영)
+# 2. 아이템 생성 함수
 def create_items_from_df(df):
     items = []
     # 사용자 요청 컬럼명: 박스번호, 폭, 높이, 길이, 중량
-    # 수량 컬럼이 별도로 없을 경우 각 행을 1개로 간주하거나, 
-    # 데이터에 '수량' 컬럼이 있다면 아래 로직에 추가할 수 있습니다.
     for index, row in df.iterrows():
         try:
             name = str(row['박스번호'])
@@ -30,18 +28,17 @@ def create_items_from_df(df):
             # py3dbp: Item(이름, 가로, 높이, 깊이, 무게)
             items.append(Item(name, w, h, l, weight))
         except KeyError as e:
-            st.error(f"엑셀 컬럼명이 일치하지 않습니다: {e}")
+            st.error(f"엑셀 컬럼명이 일치하지 않습니다. '박스번호, 폭, 높이, 길이, 중량'인지 확인해주세요. (에러: {e})")
             return None
         except Exception as e:
             st.error(f"{index}행 데이터 오류: {e}")
             continue
     return items
 
-# 3. 차량 최적화 로직
+# 3. 차량 최적화 로직 (작은 차부터 채우기)
 def get_optimized_trucks(items):
     remaining_items = items[:]
     used_trucks = []
-    # 작은 차부터 시뮬레이션하기 위해 정렬
     sorted_keys = sorted(TRUCK_DB.keys(), key=lambda k: TRUCK_DB[k]['weight'])
 
     while remaining_items:
@@ -57,11 +54,9 @@ def get_optimized_trucks(items):
             packer.pack(bigger_first=True, number_of_decimals=0)
             
             temp_bin = packer.bins[0]
-            # 모든 남은 짐이 들어가면 해당 트럭 확정
             if len(temp_bin.items) == len(remaining_items):
                 best_bin = temp_bin
                 break
-            # 다 안 들어가면 가장 많이 실리는 트럭 저장
             if len(temp_bin.items) > max_packed_count:
                 max_packed_count = len(temp_bin.items)
                 best_bin = temp_bin
@@ -79,7 +74,6 @@ def get_optimized_trucks(items):
 def create_3d_figure(bin_obj):
     fig = go.Figure()
     W, H, D = bin_obj.width, bin_obj.height, bin_obj.depth
-    # 적재함 외곽선
     lx, ly, lz = [0,W,W,0,0,0,W,W,0,0,W,W,0,0,W,W], [0,0,D,D,0,0,0,D,D,0,0,0,D,D,D,D], [0,0,0,0,0,H,H,H,H,H,H,0,0,H,H,0]
     fig.add_trace(go.Scatter3d(x=lx, y=ly, z=lz, mode='lines', line=dict(color='black', width=3), hoverinfo='none'))
     
@@ -100,24 +94,35 @@ uploaded_file = st.sidebar.file_uploader("엑셀 파일 업로드", type=['xlsx'
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
-    st.write("데이터 미리보기:", df.head())
+    
+    # [수정된 부분] head()를 제거하여 전체 데이터를 보여줍니다.
+    st.subheader(f"📊 업로드된 데이터 (총 {len(df)}개)")
+    st.dataframe(df) # 전체 데이터를 표 형태로 출력
 
-    if st.button("최적 배차 계산 실행"):
+    if st.button("최적 배차 계산 실행", type="primary"):
         items = create_items_from_df(df)
         if items:
-            with st.spinner("계산 중..."):
+            with st.spinner("최적의 차량 조합을 계산 중입니다..."):
                 trucks = get_optimized_trucks(items)
             
-            st.success(f"결과: 총 {len(trucks)}대의 차량이 필요합니다.")
-            
-            # 각 차량별 탭 생성
-            tabs = st.tabs([t.name for t in trucks])
-            for i, tab in enumerate(tabs):
-                with tab:
-                    col1, col2 = st.columns([1, 2])
-                    with col1:
-                        st.write(f"**차량:** {trucks[i].name}")
-                        st.write(f"**적재 박스:** {len(trucks[i].items)}개")
-                        st.write(f"**총 중량:** {trucks[i].get_total_weight():,} kg")
-                    with col2:
-                        st.plotly_chart(create_3d_figure(trucks[i]), use_container_width=True)
+            if not trucks:
+                st.error("적재 가능한 차량을 찾지 못했습니다. 데이터의 크기나 중량을 확인해주세요.")
+            else:
+                st.success(f"✅ 분석 완료: 총 {len(trucks)}대의 차량이 필요합니다.")
+                
+                # 각 차량별 탭 생성
+                tabs = st.tabs([t.name for t in trucks])
+                for i, tab in enumerate(tabs):
+                    with tab:
+                        c1, c2 = st.columns([1, 2])
+                        with c1:
+                            st.info(f"**배차 정보: {trucks[i].name}**")
+                            st.write(f"- 적재 박스 수: {len(trucks[i].items)}개")
+                            st.write(f"- 총 중량: {trucks[i].get_total_weight():,} kg")
+                            
+                            # 해당 차량에 실린 박스 번호 목록 표시
+                            packed_list = [it.name for it in trucks[i].items]
+                            st.write(f"- 실린 박스: {', '.join(packed_list)}")
+                            
+                        with c2:
+                            st.plotly_chart(create_3d_figure(trucks[i]), use_container_width=True)
