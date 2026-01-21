@@ -170,7 +170,7 @@ def run_optimization(all_items):
     return used_trucks
 
 # ==========================================
-# 4. 시각화 (디자인 대폭 수정: 현대적인 적재함)
+# 4. 시각화 (디자인 대폭 수정: 사실적인 바퀴)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -178,9 +178,9 @@ def draw_truck_3d(truck, camera_view="iso"):
     W, L, Real_H = spec['w'], spec['l'], spec['real_h']
     LIMIT_H = 1300
     
-    # --- [1] 트럭 디자인 (헤드 제거, 현대적인 적재함) ---
+    # --- [1] 트럭 디자인 ---
     
-    # 1. 섀시 (Chassis) - 하부 프레임
+    # 1. 섀시 (Chassis)
     chassis_h = 150
     fig.add_trace(go.Mesh3d(
         x=[0, W, W, 0, 0, W, W, 0],
@@ -190,50 +190,84 @@ def draw_truck_3d(truck, camera_view="iso"):
         color='#333333', flatshading=True, name='섀시'
     ))
 
-    # 2. 바퀴 (Round Wheels - 32각형)
-    def create_cylinder(cx, cy, cz, r, w, axis='x', color='#111111'):
-        theta = np.linspace(0, 2*np.pi, 32)
-        x, y, z = [], [], []
+    # 2. 바퀴 (사실적인 디자인 - 타이어 트레드 & 휠 허브)
+    def create_realistic_wheel(cx, cy, cz, r, w):
+        # (1) 타이어 본체 (검은색 고무)
+        theta = np.linspace(0, 2*np.pi, 64) # 더 부드럽게
+        x_tire, y_tire, z_tire = [], [], []
         for t in theta:
-            x.extend([cx - w/2, cx + w/2])
-            y.extend([cy + r*np.cos(t), cy + r*np.cos(t)])
-            z.extend([cz + r*np.sin(t), cz + r*np.sin(t)])
-        return go.Mesh3d(x=x, y=y, z=z, alphahull=0, color=color, flatshading=True, showlegend=False)
+            x_tire.extend([cx - w/2, cx + w/2])
+            y_tire.extend([cy + r*np.cos(t), cy + r*np.cos(t)])
+            z_tire.extend([cz + r*np.sin(t), cz + r*np.sin(t)])
+        fig.add_trace(go.Mesh3d(x=x_tire, y=y_tire, z=z_tire, alphahull=0, color='#1c1c1c', flatshading=True, showlegend=False, name='타이어'))
+
+        # (2) 타이어 트레드 (Tread Pattern - 격자무늬 라인)
+        tread_lines_x, tread_lines_y, tread_lines_z = [], [], []
+        num_treads = 16
+        for i in range(num_treads):
+            t1 = (2 * math.pi / num_treads) * i
+            t2 = (2 * math.pi / num_treads) * (i + 0.5)
+            # 가로 라인
+            tread_lines_x.extend([cx - w/2, cx + w/2, None])
+            tread_lines_y.extend([cy + r*math.cos(t1), cy + r*math.cos(t1), None])
+            tread_lines_z.extend([cz + r*math.sin(t1), cz + r*math.sin(t1), None])
+            # 사선 라인 (지그재그)
+            tread_lines_x.extend([cx - w/2, cx, cx + w/2, None])
+            tread_lines_y.extend([cy + r*math.cos(t1), cy + r*math.cos(t2), cy + r*math.cos(t1), None])
+            tread_lines_z.extend([cz + r*math.sin(t1), cz + r*math.sin(t2), cz + r*math.sin(t1), None])
+
+        fig.add_trace(go.Scatter3d(x=tread_lines_x, y=tread_lines_y, z=tread_lines_z, mode='lines', line=dict(color='#000000', width=2), showlegend=False, name='트레드'))
+        
+        # (3) 휠 허브 (Wheel Hub - 은색 입체)
+        hub_r = r * 0.6 # 허브 반지름
+        hub_w = w * 0.2 # 허브 튀어나온 정도
+        # 바깥쪽 허브 (보이는 쪽)
+        theta_hub = np.linspace(0, 2*np.pi, 32)
+        x_hub, y_hub, z_hub = [], [], []
+        # 중앙 포인트
+        x_hub.append(cx + w/2 + hub_w)
+        y_hub.append(cy)
+        z_hub.append(cz)
+        # 테두리 포인트
+        for t in theta_hub:
+            x_hub.append(cx + w/2)
+            y_hub.append(cy + hub_r*math.cos(t))
+            z_hub.append(cz + hub_r*math.sin(t))
+        
+        # 부채꼴 모양으로 면 생성 (Triangle Fan)
+        i_hub = [0] * 32
+        j_hub = list(range(1, 33))
+        k_hub = list(range(2, 33)) + [1]
+        
+        fig.add_trace(go.Mesh3d(x=x_hub, y=y_hub, z=z_hub, i=i_hub, j=j_hub, k=k_hub, color='#c0c0c0', flatshading=False, showlegend=False, name='휠 허브', lighting=dict(ambient=0.5, diffuse=0.8, specular=1.0, roughness=0.1)))
+        
+        # 볼트 구멍 (작은 검은 점들)
+        num_bolts = 6
+        bolt_r = hub_r * 0.6
+        bolt_x, bolt_y, bolt_z = [], [], []
+        for i in range(num_bolts):
+            t = (2 * math.pi / num_bolts) * i
+            bolt_x.append(cx + w/2 + hub_w * 0.8)
+            bolt_y.append(cy + bolt_r*math.cos(t))
+            bolt_z.append(cz + bolt_r*math.sin(t))
+        fig.add_trace(go.Scatter3d(x=bolt_x, y=bolt_y, z=bolt_z, mode='markers', marker=dict(color='black', size=3), showlegend=False, name='휠 볼트'))
+
 
     wheel_r = 450
     wheel_w = 280
     wheel_z = -chassis_h - 100
     wheel_pos = [(-wheel_w/2, L*0.18), (W+wheel_w/2, L*0.18), (-wheel_w/2, L*0.82), (W+wheel_w/2, L*0.82)]
     for wx, wy in wheel_pos:
-        fig.add_trace(create_cylinder(wx, wy, wheel_z, wheel_r, wheel_w))
+        create_realistic_wheel(wx, wy, wheel_z, wheel_r, wheel_w)
 
-    # 3. 적재함 벽면 (현대적인 반투명 재질)
-    # 옆면 (유리/아크릴 느낌)
-    wall_color = '#e0e0e0' # 밝은 회색
-    wall_opacity = 0.3     # 반투명
-    
-    # 옆면(좌우)
-    fig.add_trace(go.Mesh3d(
-        x=[0, 0, 0, 0, W, W, W, W],
-        y=[0, L, L, 0, 0, L, L, 0],
-        z=[0, 0, Real_H, Real_H, 0, 0, Real_H, Real_H],
-        i=[0, 0, 4, 4], j=[1, 2, 5, 6], k=[2, 3, 6, 7],
-        color=wall_color, opacity=wall_opacity, flatshading=True, showlegend=False
-    ))
-    # 앞면
-    fig.add_trace(go.Mesh3d(
-        x=[0, W, W, 0], y=[L, L, L, L], z=[0, 0, Real_H, Real_H],
-        i=[0, 0], j=[1, 2], k=[2, 3],
-        color=wall_color, opacity=wall_opacity, flatshading=True, showlegend=False
-    ))
-    # 뒷면 (문)
-    fig.add_trace(go.Mesh3d(
-        x=[0, W, W, 0], y=[0, 0, 0, 0], z=[0, 0, Real_H, Real_H],
-        i=[0, 0], j=[1, 2], k=[2, 3],
-        color=wall_color, opacity=wall_opacity, flatshading=True, showlegend=False
-    ))
+    # 3. 적재함 벽면 (현대적인 반투명 재질 - 기존 유지)
+    wall_color = '#e0e0e0' 
+    wall_opacity = 0.3     
+    fig.add_trace(go.Mesh3d(x=[0, 0, 0, 0, W, W, W, W], y=[0, L, L, 0, 0, L, L, 0], z=[0, 0, Real_H, Real_H, 0, 0, Real_H, Real_H], i=[0, 0, 4, 4], j=[1, 2, 5, 6], k=[2, 3, 6, 7], color=wall_color, opacity=wall_opacity, flatshading=True, showlegend=False))
+    fig.add_trace(go.Mesh3d(x=[0, W, W, 0], y=[L, L, L, L], z=[0, 0, Real_H, Real_H], i=[0, 0], j=[1, 2], k=[2, 3], color=wall_color, opacity=wall_opacity, flatshading=True, showlegend=False))
+    fig.add_trace(go.Mesh3d(x=[0, W, W, 0], y=[0, 0, 0, 0], z=[0, 0, Real_H, Real_H], i=[0, 0], j=[1, 2], k=[2, 3], color=wall_color, opacity=wall_opacity, flatshading=True, showlegend=False))
 
-    # 4. 적재함 프레임 (세련된 진한 회색)
+    # 4. 적재함 프레임 (세련된 진한 회색 - 기존 유지)
     lines_x = [0,W,W,0,0, 0,W,W,0,0, W,W,0,0, W,W]
     lines_y = [0,0,L,L,0, 0,0,L,L,0, 0,0,L,L, L,L]
     lines_z = [0,0,0,0,0, Real_H,Real_H,Real_H,Real_H,Real_H, 0,Real_H,Real_H,0, 0,Real_H]
@@ -243,27 +277,15 @@ def draw_truck_3d(truck, camera_view="iso"):
     # --- [2] 치수선 (기존 유지: 화살표 <->) ---
     OFFSET = 1200 
     def add_dimension(p1, p2, label, color='black'):
-        fig.add_trace(go.Scatter3d(
-            x=[p1[0], p2[0]], y=[p1[1], p2[1]], z=[p1[2], p2[2]],
-            mode='lines', line=dict(color=color, width=2), showlegend=False
-        ))
+        fig.add_trace(go.Scatter3d(x=[p1[0], p2[0]], y=[p1[1], p2[1]], z=[p1[2], p2[2]], mode='lines', line=dict(color=color, width=2), showlegend=False))
         vec = np.array(p2) - np.array(p1)
         length = np.linalg.norm(vec)
         if length > 0:
             uvw = vec / length
-            fig.add_trace(go.Cone(
-                x=[p2[0]], y=[p2[1]], z=[p2[2]], u=[uvw[0]], v=[uvw[1]], w=[uvw[2]],
-                sizemode="absolute", sizeref=200, anchor="tip", showscale=False, colorscale=[[0, color], [1, color]]
-            ))
-            fig.add_trace(go.Cone(
-                x=[p1[0]], y=[p1[1]], z=[p1[2]], u=[-uvw[0]], v=[-uvw[1]], w=[-uvw[2]],
-                sizemode="absolute", sizeref=200, anchor="tip", showscale=False, colorscale=[[0, color], [1, color]]
-            ))
+            fig.add_trace(go.Cone(x=[p2[0]], y=[p2[1]], z=[p2[2]], u=[uvw[0]], v=[uvw[1]], w=[uvw[2]], sizemode="absolute", sizeref=200, anchor="tip", showscale=False, colorscale=[[0, color], [1, color]]))
+            fig.add_trace(go.Cone(x=[p1[0]], y=[p1[1]], z=[p1[2]], u=[-uvw[0]], v=[-uvw[1]], w=[-uvw[2]], sizemode="absolute", sizeref=200, anchor="tip", showscale=False, colorscale=[[0, color], [1, color]]))
         mid = [(p1[0]+p2[0])/2, (p1[1]+p2[1])/2, (p1[2]+p2[2])/2]
-        fig.add_trace(go.Scatter3d(
-            x=[mid[0]], y=[mid[1]], z=[mid[2]], mode='text', text=[f"<b>{label}</b>"], 
-            textfont=dict(size=14, color=color, family="Arial"), showlegend=False
-        ))
+        fig.add_trace(go.Scatter3d(x=[mid[0]], y=[mid[1]], z=[mid[2]], mode='text', text=[f"<b>{label}</b>"], textfont=dict(size=14, color=color, family="Arial"), showlegend=False))
     add_dimension((0, -OFFSET, 0), (W, -OFFSET, 0), f"폭 : {int(W)}")
     add_dimension((-OFFSET, 0, 0), (-OFFSET, L, 0), f"길이 : {int(L)}")
     add_dimension((-OFFSET, L, 0), (-OFFSET, L, LIMIT_H), f"높이제한(최대4단) : {int(LIMIT_H)}", color='red')
@@ -275,58 +297,39 @@ def draw_truck_3d(truck, camera_view="iso"):
         x, y, z = item.x, item.y, item.z
         w, h, d = item.w, item.h, item.d
         color = '#FF0000' if getattr(item, 'is_heavy', False) else '#f39c12'
-        fig.add_trace(go.Mesh3d(
-            x=[x,x+w,x+w,x, x,x+w,x+w,x], y=[y,y,y+d,y+d, y,y,y+d,y+d], z=[z,z,z,z, z+h,z+h,z+h,z+h],
-            i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6],
-            color=color, opacity=1.0, flatshading=True, name=item.name
-        ))
+        fig.add_trace(go.Mesh3d(x=[x,x+w,x+w,x, x,x+w,x+w,x], y=[y,y,y+d,y+d, y,y,y+d,y+d], z=[z,z,z,z, z+h,z+h,z+h,z+h], i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6], color=color, opacity=1.0, flatshading=True, name=item.name))
         ex = [x,x+w,x+w,x,x, x,x+w,x+w,x,x, x+w,x+w,x+w,x+w, x,x]
         ey = [y,y,y+d,y+d,y, y,y,y+d,y+d,y, y,y,y+d,y+d, y+d,y+d]
         ez = [z,z,z,z,z, z+h,z+h,z+h,z+h,z+h, z,z+h,z+h,z, z,z+h]
         fig.add_trace(go.Scatter3d(x=ex, y=ey, z=ez, mode='lines', line=dict(color='black', width=3), showlegend=False))
         cx, cy, cz = x + w/2, y + d/2, z + h/2
-        annotations.append(dict(
-            x=cx, y=cy, z=cz, text=f"<b>{item.name}</b>", xanchor="center", yanchor="middle", showarrow=False,
-            font=dict(color="white" if getattr(item, 'is_heavy', False) else "black", size=14, family="Arial Black"),
-            bgcolor="rgba(0, 0, 0, 0.6)" if getattr(item, 'is_heavy', False) else "rgba(255, 255, 255, 0.7)", borderpad=2
-        ))
+        annotations.append(dict(x=cx, y=cy, z=cz, text=f"<b>{item.name}</b>", xanchor="center", yanchor="middle", showarrow=False, font=dict(color="white" if getattr(item, 'is_heavy', False) else "black", size=14, family="Arial Black"), bgcolor="rgba(0, 0, 0, 0.6)" if getattr(item, 'is_heavy', False) else "rgba(255, 255, 255, 0.7)", borderpad=2))
 
     # --- [4] 뷰 설정 (기존 유지) ---
     if camera_view == "top": eye = dict(x=0, y=0.1, z=2.5); up = dict(x=0, y=1, z=0)
     elif camera_view == "side": eye = dict(x=2.5, y=0, z=0.5); up = dict(x=0, y=0, z=1)
     else: eye = dict(x=2.0, y=-1.5, z=1.2); up = dict(x=0, y=0, z=1)
-    fig.update_layout(
-        scene=dict(aspectmode='data', xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False), bgcolor='white', camera=dict(eye=eye, up=up), annotations=annotations),
-        margin=dict(l=0,r=0,b=0,t=0), height=700
-    )
+    fig.update_layout(scene=dict(aspectmode='data', xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False), bgcolor='white', camera=dict(eye=eye, up=up), annotations=annotations), margin=dict(l=0,r=0,b=0,t=0), height=700)
     return fig
 
 # ==========================================
-# 5. 메인 UI
+# 5. 메인 UI (기존 유지)
 # ==========================================
 st.title("📦 Ultimate Load Planner")
 st.caption("✅ 물리엔진 | 회전금지 | 1.3m 제한 | 뷰 컨트롤 | 고퀄리티 디자인")
-
-if 'view_mode' not in st.session_state:
-    st.session_state['view_mode'] = 'iso'
-
+if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
-
 if uploaded_file:
     try:
-        if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file, encoding='cp949')
-        else:
-            df = pd.read_excel(uploaded_file)
+        if uploaded_file.name.endswith('.csv'): df = pd.read_csv(uploaded_file, encoding='cp949')
+        else: df = pd.read_excel(uploaded_file)
         df.columns = [c.strip() for c in df.columns]
         st.subheader(f"📋 데이터 확인 ({len(df)}건)")
         st.dataframe(df)
-        if st.button("최적 배차 실행", type="primary"):
-            st.session_state['run_result'] = load_data(df)
+        if st.button("최적 배차 실행", type="primary"): st.session_state['run_result'] = load_data(df)
         if 'run_result' in st.session_state:
             items = st.session_state['run_result']
-            if not items:
-                st.error("데이터 변환 실패.")
+            if not items: st.error("데이터 변환 실패.")
             else:
                 trucks = run_optimization(items)
                 if trucks:
@@ -351,11 +354,8 @@ if uploaded_file:
                                 st.markdown(f"### **{t.name}**")
                                 st.write(f"- 박스: **{len(t.items)}개**")
                                 st.write(f"- 중량: **{t.total_weight:,} kg**")
-                                with st.expander("목록 보기"):
-                                    st.write(", ".join([b.name for b in t.items]))
+                                with st.expander("목록 보기"): st.write(", ".join([b.name for b in t.items]))
                             with col2:
                                 st.plotly_chart(draw_truck_3d(t, st.session_state['view_mode']), use_container_width=True)
-                else:
-                    st.warning("적재 가능한 차량을 찾지 못했습니다.")
-    except Exception as e:
-        st.error(f"오류 발생: {e}")
+                else: st.warning("적재 가능한 차량을 찾지 못했습니다.")
+    except Exception as e: st.error(f"오류 발생: {e}")
