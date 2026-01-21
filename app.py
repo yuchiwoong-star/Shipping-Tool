@@ -202,7 +202,7 @@ def run_optimization(all_items):
     return final_trucks
 
 # ==========================================
-# 4. 시각화 (박스번호 뷰 고도화)
+# 4. 시각화 (직교 투영 & 도면 스타일 적용)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -213,7 +213,7 @@ def draw_truck_3d(truck, camera_view="iso"):
     
     # [1] 섀시
     chassis_h = 180
-    fig.add_trace(go.Mesh3d(x=[0, W, W, 0, 0, W, W, 0], y=[0, 0, L, L, 0, 0, L, L], z=[-chassis_h, -chassis_h, -chassis_h, -chassis_h, 0, 0, 0, 0], i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6], color='#222222', flatshading=True, showlegend=False))
+    fig.add_trace(go.Mesh3d(x=[0, W, W, 0, 0, W, W, 0], y=[0, 0, L, L, 0, 0, L, L], z=[-chassis_h, -chassis_h, -chassis_h, -chassis_h, 0, 0, 0, 0], i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6], color='#222222', flatshading=True, showlegend=False, hoverinfo='skip'))
 
     # [2] 바퀴
     def create_realistic_wheel(cx, cy, cz, r, w):
@@ -223,7 +223,7 @@ def draw_truck_3d(truck, camera_view="iso"):
             x_tire.extend([cx - w/2, cx + w/2])
             y_tire.extend([cy + r*np.cos(t), cy + r*np.cos(t)])
             z_tire.extend([cz + r*np.sin(t), cz + r*np.sin(t)])
-        fig.add_trace(go.Mesh3d(x=x_tire, y=y_tire, z=z_tire, alphahull=0, color='#333333', flatshading=True, showlegend=False, lighting=dict(ambient=1.0)))
+        fig.add_trace(go.Mesh3d(x=x_tire, y=y_tire, z=z_tire, alphahull=0, color='#333333', flatshading=True, showlegend=False, lighting=dict(ambient=1.0), hoverinfo='skip'))
         tread_x, tread_y, tread_z = [], [], []
         num_treads = 16
         for i in range(num_treads):
@@ -231,14 +231,14 @@ def draw_truck_3d(truck, camera_view="iso"):
             tread_x.extend([cx - w/2, cx + w/2, None])
             tread_y.extend([cy + r*math.cos(t1), cy + r*math.cos(t1), None])
             tread_z.extend([cz + r*math.sin(t1), cz + r*math.sin(t1), None])
-        fig.add_trace(go.Scatter3d(x=tread_x, y=tread_y, z=tread_z, mode='lines', line=dict(color='#111111', width=3), showlegend=False))
+        fig.add_trace(go.Scatter3d(x=tread_x, y=tread_y, z=tread_z, mode='lines', line=dict(color='#111111', width=3), showlegend=False, hoverinfo='skip'))
         hub_r = r * 0.6; hub_w = w * 0.1
         theta_hub = np.linspace(0, 2*np.pi, 16)
         x_hub, y_hub, z_hub = [], [], []; x_hub.append(cx + w/2 + hub_w); y_hub.append(cy); z_hub.append(cz)
         for t in theta_hub:
             x_hub.append(cx + w/2); y_hub.append(cy + hub_r*math.cos(t)); z_hub.append(cz + hub_r*math.sin(t))
         i_hub = [0]*16; j_hub = list(range(1, 17)); k_hub = list(range(2, 17)) + [1]
-        fig.add_trace(go.Mesh3d(x=x_hub, y=y_hub, z=z_hub, i=i_hub, j=j_hub, k=k_hub, color='#dddddd', flatshading=True, showlegend=False, lighting=dict(ambient=0.9)))
+        fig.add_trace(go.Mesh3d(x=x_hub, y=y_hub, z=z_hub, i=i_hub, j=j_hub, k=k_hub, color='#dddddd', flatshading=True, showlegend=False, lighting=dict(ambient=0.9), hoverinfo='skip'))
 
     wheel_r = 450; wheel_w = 280; wheel_z = -chassis_h - 100
     wheel_pos = [(-wheel_w/2, L*0.15), (W+wheel_w/2, L*0.15), (-wheel_w/2, L*0.30), (W+wheel_w/2, L*0.30), (-wheel_w/2, L*0.70), (W+wheel_w/2, L*0.70), (-wheel_w/2, L*0.85), (W+wheel_w/2, L*0.85)]
@@ -256,58 +256,65 @@ def draw_truck_3d(truck, camera_view="iso"):
     # [4] 치수선
     OFFSET = 1200 
     def add_dimension(p1, p2, label, color='black'):
-        fig.add_trace(go.Scatter3d(x=[p1[0], p2[0]], y=[p1[1], p2[1]], z=[p1[2], p2[2]], mode='lines', line=dict(color=color, width=2), showlegend=False))
+        fig.add_trace(go.Scatter3d(x=[p1[0], p2[0]], y=[p1[1], p2[1]], z=[p1[2], p2[2]], mode='lines', line=dict(color=color, width=2), showlegend=False, hoverinfo='skip'))
         vec = np.array(p2) - np.array(p1); length = np.linalg.norm(vec)
         if length > 0:
             uvw = vec / length
-            fig.add_trace(go.Cone(x=[p2[0]], y=[p2[1]], z=[p2[2]], u=[uvw[0]], v=[uvw[1]], w=[uvw[2]], sizemode="absolute", sizeref=200, anchor="tip", showscale=False, colorscale=[[0, color], [1, color]]))
-            fig.add_trace(go.Cone(x=[p1[0]], y=[p1[1]], z=[p1[2]], u=[-uvw[0]], v=[-uvw[1]], w=[-uvw[2]], sizemode="absolute", sizeref=200, anchor="tip", showscale=False, colorscale=[[0, color], [1, color]]))
+            fig.add_trace(go.Cone(x=[p2[0]], y=[p2[1]], z=[p2[2]], u=[uvw[0]], v=[uvw[1]], w=[uvw[2]], sizemode="absolute", sizeref=200, anchor="tip", showscale=False, colorscale=[[0, color], [1, color]], hoverinfo='skip'))
+            fig.add_trace(go.Cone(x=[p1[0]], y=[p1[1]], z=[p1[2]], u=[-uvw[0]], v=[-uvw[1]], w=[-uvw[2]], sizemode="absolute", sizeref=200, anchor="tip", showscale=False, colorscale=[[0, color], [1, color]], hoverinfo='skip'))
         mid = [(p1[0]+p2[0])/2, (p1[1]+p2[1])/2, (p1[2]+p2[2])/2]
-        fig.add_trace(go.Scatter3d(x=[mid[0]], y=[mid[1]], z=[mid[2]], mode='text', text=[f"<b>{label}</b>"], textfont=dict(size=14, color=color, family="Arial"), showlegend=False))
+        fig.add_trace(go.Scatter3d(x=[mid[0]], y=[mid[1]], z=[mid[2]], mode='text', text=[f"<b>{label}</b>"], textfont=dict(size=14, color=color, family="Arial"), showlegend=False, hoverinfo='skip'))
     
     add_dimension((0, -OFFSET, 0), (W, -OFFSET, 0), f"폭 : {int(W)}")
     add_dimension((-OFFSET, 0, 0), (-OFFSET, L, 0), f"길이 : {int(L)}")
     add_dimension((-OFFSET, L, 0), (-OFFSET, L, LIMIT_H), f"높이제한(최대4단) : {int(LIMIT_H)}", color='red')
-    fig.add_trace(go.Scatter3d(x=[0,W,W,0,0], y=[0,0,L,L,0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False))
+    fig.add_trace(go.Scatter3d(x=[0,W,W,0,0], y=[0,0,L,L,0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False, hoverinfo='skip'))
 
-    # [5] 박스 & 번호 (수정됨)
-    # camera_view가 'labels'일 때만 3D 텍스트 표시
+    # [5] 박스 & 번호 (Orthographic + Fixed Text)
     show_labels = (camera_view == 'labels')
     
     for item in truck.items:
         color = '#FF0000' if getattr(item, 'is_heavy', False) else '#f39c12'
         x, y, z = item.x, item.y, item.z; w, h, d = item.w, item.h, item.d
         
-        # 박스 (Mesh3d)
-        fig.add_trace(go.Mesh3d(x=[x,x+w,x+w,x, x,x+w,x+w,x], y=[y,y,y+d,y+d, y,y,y+d,y+d], z=[z,z,z,z, z+h,z+h,z+h,z+h], i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6], color=color, opacity=1.0, flatshading=True, name=item.name))
+        # 박스 (hoverinfo skip으로 마우스 움직임 방해 최소화)
+        fig.add_trace(go.Mesh3d(x=[x,x+w,x+w,x, x,x+w,x+w,x], y=[y,y,y+d,y+d, y,y,y+d,y+d], z=[z,z,z,z, z+h,z+h,z+h,z+h], i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6], color=color, opacity=1.0, flatshading=True, name=item.name, hoverinfo='name' if not show_labels else 'skip'))
         
-        # 외곽선 (Line)
+        # 외곽선
         ex = [x,x+w,x+w,x,x, x,x+w,x+w,x,x, x+w,x+w,x+w,x+w, x,x]; ey = [y,y,y+d,y+d,y, y,y,y+d,y+d,y, y,y,y+d,y+d, y+d,y+d]; ez = [z,z,z,z,z, z+h,z+h,z+h,z+h,z+h, z,z+h,z+h,z, z,z+h]
-        fig.add_trace(go.Scatter3d(x=ex, y=ey, z=ez, mode='lines', line=dict(color='black', width=3), showlegend=False))
+        fig.add_trace(go.Scatter3d(x=ex, y=ey, z=ez, mode='lines', line=dict(color='black', width=3), showlegend=False, hoverinfo='skip'))
         
-        # [NEW] 박스번호 고정 3D 텍스트
+        # [NEW] 박스번호뷰: 직교 투영에서 깔끔하게 보이는 텍스트
         if show_labels:
-            # 박스 상단 면(z+h) 중앙에 배치
-            # z를 살짝 띄워서(z+h+2) 면에 묻히지 않게 함
-            tx, ty, tz = x + w/2, y + d/2, z + h + 2
+            tx, ty, tz = x + w/2, y + d/2, z + h + 2 # 박스 바로 위
             fig.add_trace(go.Scatter3d(
                 x=[tx], y=[ty], z=[tz],
                 mode='text',
                 text=[f"{item.name}"],
-                textfont=dict(color='black', size=14, family="Arial Black"), # 진한 검은색
-                showlegend=False
+                textfont=dict(color='black', size=16, family="Arial Black"), 
+                showlegend=False,
+                hoverinfo='skip' # 마우스 영향 받지 않음
             ))
 
-    # [6] 뷰 설정
-    # labels 뷰는 Quarter View 각도 사용
+    # [6] 뷰 설정 (Orthographic 적용)
+    # labels 모드일 때만 'orthographic' (단면뷰/도면 느낌)
+    projection_type = "perspective"
+    if camera_view == 'labels':
+        projection_type = "orthographic"
+    
     if camera_view == "top": eye = dict(x=0, y=0.1, z=2.5); up = dict(x=0, y=1, z=0)
     elif camera_view == "side": eye = dict(x=2.5, y=0, z=0.5); up = dict(x=0, y=0, z=1)
-    else: eye = dict(x=2.0, y=-1.5, z=1.2); up = dict(x=0, y=0, z=1) # iso, labels
+    else: eye = dict(x=2.0, y=-2.0, z=1.5); up = dict(x=0, y=0, z=1) 
     
     fig.update_layout(
         scene=dict(
-            aspectmode='data', xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False),
-            bgcolor='white', camera=dict(eye=eye, up=up)
+            aspectmode='data', 
+            xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False),
+            bgcolor='white', 
+            camera=dict(
+                projection=dict(type=projection_type), # 여기서 투영 방식 결정
+                eye=eye, up=up
+            )
         ),
         margin=dict(l=0,r=0,b=0,t=0), height=700,
         uirevision=str(uuid.uuid4())
@@ -355,7 +362,6 @@ if uploaded_file:
                     summary = ", ".join([f"{k} {v}대" for k,v in cnt.items()])
                     st.success(f"✅ 분석 완료: 총 {len(trucks)}대 ({summary}) | 예상 총 운송비: {total_cost:,}원")
                     
-                    # 버튼 4개 배치
                     c1, c2, c3, c4, _ = st.columns([1, 1, 1, 1, 4])
                     with c1: 
                         if st.button("↗️ 쿼터뷰"): st.session_state['view_mode'] = 'iso'
