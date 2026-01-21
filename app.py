@@ -1,22 +1,24 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import numpy as np
 import math
-import numpy as np  # [수정] 누락된 라이브러리 추가하여 에러 해결
 
 # ==========================================
 # 1. 커스텀 물리 엔진 (기존 로직 100% 동결)
 # ==========================================
+# ※ 로직 수정 없음 (회전금지, 중력, 높이제한, 최적화 그대로)
+
 class Box:
     def __init__(self, name, w, h, d, weight):
         self.name = name
-        self.w = w
-        self.h = h
-        self.d = d
-        self.weight = weight
-        self.x = 0
-        self.y = 0
-        self.z = 0
+        self.w = float(w)
+        self.h = float(h)
+        self.d = float(d)
+        self.weight = float(weight)
+        self.x = 0.0
+        self.y = 0.0
+        self.z = 0.0
         self.is_heavy = False
 
     @property
@@ -26,13 +28,13 @@ class Box:
 class Truck:
     def __init__(self, name, w, h, d, max_weight):
         self.name = name
-        self.w = w
-        self.h = h          # 제한 높이 (1300)
-        self.d = d          # 길이
-        self.max_weight = max_weight
+        self.w = float(w)
+        self.h = float(h)
+        self.d = float(d)
+        self.max_weight = float(max_weight)
         self.items = []     # 적재된 박스들
-        self.total_weight = 0
-        self.pivots = [[0, 0, 0]] 
+        self.total_weight = 0.0
+        self.pivots = [[0.0, 0.0, 0.0]]
 
     def put_item(self, item):
         fit = False
@@ -43,6 +45,8 @@ class Truck:
 
         for p in self.pivots:
             px, py, pz = p
+            
+            # 범위, 충돌, 지지 체크
             if (px + item.w > self.w) or (py + item.d > self.d) or (pz + item.h > self.h):
                 continue
             if self._check_collision(item, px, py, pz):
@@ -60,6 +64,7 @@ class Truck:
             self.pivots.append([item.x + item.w, item.y, item.z])
             self.pivots.append([item.x, item.y + item.d, item.z])
             self.pivots.append([item.x, item.y, item.z + item.h])
+            
         return fit
 
     def _check_collision(self, item, x, y, z):
@@ -71,13 +76,13 @@ class Truck:
         return False
 
     def _check_support(self, item, x, y, z):
-        if z == 0: return True 
-        support_area = 0
-        required_area = item.w * item.d * 0.6 
+        if z <= 0.001: return True
+        support_area = 0.0
+        required_area = item.w * item.d * 0.6
         for exist in self.items:
             if abs((exist.z + exist.h) - z) < 1.0:
-                ox = max(0, min(x + item.w, exist.x + exist.w) - max(x, exist.x))
-                oy = max(0, min(y + item.d, exist.y + exist.d) - max(y, exist.y))
+                ox = max(0.0, min(x + item.w, exist.x + exist.w) - max(x, exist.x))
+                oy = max(0.0, min(y + item.d, exist.y + exist.d) - max(y, exist.y))
                 support_area += ox * oy
         return support_area >= required_area
 
@@ -101,16 +106,19 @@ TRUCK_DB = {
 def load_data(df):
     items = []
     try:
+        # 중량 데이터 전처리 (에러 방지 강화)
         weights = pd.to_numeric(df['중량'], errors='coerce').dropna().tolist()
-        if weights:
+        
+        if len(weights) > 0:
             sorted_weights = sorted(weights, reverse=True)
-            # 상위 10% 기준 (최소 1개 포함)
+            # 상위 10% 기준값 (최소 1개는 포함되도록 인덱스 조정)
             cutoff_index = max(0, int(len(weights) * 0.1) - 1)
             heavy_threshold = sorted_weights[cutoff_index]
         else:
-            heavy_threshold = 999999
-    except:
-        heavy_threshold = 999999
+            heavy_threshold = 999999999 # 데이터 없으면 아무것도 선택 안 함
+            
+    except Exception as e:
+        heavy_threshold = 999999999
 
     for index, row in df.iterrows():
         try:
@@ -121,8 +129,12 @@ def load_data(df):
             weight = float(row['중량'])
             
             box = Box(name, w, h, l, weight)
-            # [수정] float 비교 오차 방지를 위해 약간의 여유를 두거나 부등호 확인
-            box.is_heavy = (weight >= heavy_threshold)
+            # [수정] 상위 10% 판별 로직 명확화
+            if weight >= heavy_threshold and weight > 0:
+                box.is_heavy = True
+            else:
+                box.is_heavy = False
+                
             items.append(box)
         except:
             continue
@@ -147,6 +159,9 @@ def run_optimization(all_items):
             
             for item in test_items:
                 item_copy = Box(item.name, item.w, item.h, item.d, item.weight)
+                # is_heavy 속성도 복사해야 함!
+                item_copy.is_heavy = item.is_heavy 
+                
                 if temp_truck.put_item(item_copy):
                     packed_count += 1
             
@@ -172,7 +187,7 @@ def run_optimization(all_items):
     return used_trucks
 
 # ==========================================
-# 4. 고퀄리티 3D 시각화 (디자인 대폭 개선)
+# 4. 시각화 (디자인 개선 & 치수선 수정)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -180,11 +195,10 @@ def draw_truck_3d(truck, camera_view="iso"):
     W, L, Real_H = spec['w'], spec['l'], spec['real_h']
     LIMIT_H = 1300
     
-    # --- [1] 디테일한 트럭 모델링 (Less Lego, More Truck) ---
+    # --- [1] 트럭 디자인 (깨짐 현상 수정) ---
     
-    # 1. 섀시 & 사이드 스커트 (Chassis)
+    # 1. 섀시 (Chassis)
     chassis_h = 200
-    # 메인 프레임
     fig.add_trace(go.Mesh3d(
         x=[0, W, W, 0, 0, W, W, 0],
         y=[0, 0, L, L, 0, 0, L, L],
@@ -195,35 +209,23 @@ def draw_truck_3d(truck, camera_view="iso"):
 
     # 2. 바퀴 (Round Wheels - 32각형)
     def create_cylinder(cx, cy, cz, r, w, axis='x', color='#111111'):
-        theta = np.linspace(0, 2*np.pi, 32) # 32각형으로 부드럽게
+        theta = np.linspace(0, 2*np.pi, 32)
         x, y, z = [], [], []
-        
-        # 원통 옆면 생성
         for t in theta:
-            if axis == 'x':
-                x.extend([cx - w/2, cx + w/2])
-                y.extend([cy + r*np.cos(t), cy + r*np.cos(t)])
-                z.extend([cz + r*np.sin(t), cz + r*np.sin(t)])
-            
-        # Mesh 구성을 위한 인덱스 생성 (Triangulation)
-        # Plotly mesh3d는 점들만 주면 알아서 연결하기 어려우므로, 
-        # 간단히 튜브 형태를 표현하기 위해 Scatter3d 라인으로 휠 아웃라인을 그리거나
-        # 여기서는 단순화를 위해 다각형 기둥 메쉬를 직접 계산하지 않고 
-        # 시각적 효과를 위해 촘촘한 점들을 Mesh로 덮습니다.
-        # (코드가 너무 길어지는 것을 방지하기 위해 'alphahull' 방식 사용)
+            x.extend([cx - w/2, cx + w/2])
+            y.extend([cy + r*np.cos(t), cy + r*np.cos(t)])
+            z.extend([cz + r*np.sin(t), cz + r*np.sin(t)])
         return go.Mesh3d(x=x, y=y, z=z, alphahull=0, color=color, flatshading=True, showlegend=False)
 
     wheel_r = 450
     wheel_w = 280
     wheel_z = -chassis_h - 100
-    
-    # 바퀴 배치
     wheel_pos = [(-wheel_w/2, L*0.18), (W+wheel_w/2, L*0.18), (-wheel_w/2, L*0.82), (W+wheel_w/2, L*0.82)]
     for wx, wy in wheel_pos:
         fig.add_trace(create_cylinder(wx, wy, wheel_z, wheel_r, wheel_w))
 
-    # 3. 헤드 (Cabin) - 에어로 다이내믹 디자인
-    cabin_len = 1800
+    # 3. 헤드 (Cabin) - 디자인 개선
+    cabin_len = 1600
     cabin_h = 2600
     cy = L + 100 
     
@@ -239,9 +241,8 @@ def draw_truck_3d(truck, camera_view="iso"):
     
     # (B) 헤드 상단 (곡선형 지붕 느낌을 위해 경사면 추가)
     top_z = cabin_h
-    spoiler_y = cy + cabin_len - 600 # 윈드쉴드 경사 시작점
+    spoiler_y = cy + cabin_len - 600
     
-    # 상단부 좌표 (앞쪽이 깎이고 위쪽은 평평)
     cx = [0, W, W, 0, 0, W, W, 0]
     cy_coords = [cy, cy, cy+cabin_len, cy+cabin_len, cy, cy, spoiler_y, spoiler_y]
     cz = [base_h, base_h, base_h, base_h, top_z, top_z, top_z-200, top_z-200]
@@ -252,12 +253,17 @@ def draw_truck_3d(truck, camera_view="iso"):
         color='#2980b9', flatshading=True, name='헤드 상단'
     ))
 
-    # (C) 윈드쉴드 (유리)
+    # (C) 윈드쉴드 (유리) - [수정] 인덱스 정렬로 깨짐 방지
+    # 앞쪽 경사면 (spoiler_y ~ cy+cabin_len 사이)
+    # P0(50, spoiler_y, top_z-250), P1(W-50, spoiler_y, top_z-250)
+    # P2(W-50, cy+cabin_len, base_h+50), P3(50, cy+cabin_len, base_h+50)
+    wx = [50, W-50, W-50, 50]
+    wy = [spoiler_y, spoiler_y, cy+cabin_len, cy+cabin_len]
+    wz = [top_z-250, top_z-250, base_h+50, base_h+50]
+    
     fig.add_trace(go.Mesh3d(
-        x=[50, W-50, W-50, 50],
-        y=[spoiler_y, spoiler_y, cy+cabin_len, cy+cabin_len],
-        z=[top_z-250, top_z-250, base_h+50, base_h+50],
-        i=[0, 0], j=[1, 2], k=[2, 3],
+        x=wx, y=wy, z=wz,
+        i=[0, 0], j=[1, 2], k=[2, 3], # Quad -> 2 Triangles
         color='#aed6f1', opacity=0.9, name='윈드쉴드'
     ))
     
@@ -338,10 +344,11 @@ def draw_truck_3d(truck, camera_view="iso"):
         w, h, d = item.w, item.h, item.d
         
         # 색상: 상위 10% 빨간색 강조 (#FF0000)
-        if item.is_heavy:
-            color = '#FF0000' 
+        # [중요] Box 객체 복사 시 is_heavy 속성이 유지되도록 처리했으므로 정상 표시됨
+        if getattr(item, 'is_heavy', False):
+            color = '#FF0000' # 완전 빨강
         else:
-            color = '#f39c12'
+            color = '#f39c12' # 오렌지
             
         # 박스 면
         fig.add_trace(go.Mesh3d(
@@ -365,8 +372,8 @@ def draw_truck_3d(truck, camera_view="iso"):
             text=f"<b>{item.name}</b>",
             xanchor="center", yanchor="middle",
             showarrow=False,
-            font=dict(color="white" if item.is_heavy else "black", size=14, family="Arial Black"),
-            bgcolor="rgba(0, 0, 0, 0.6)" if item.is_heavy else "rgba(255, 255, 255, 0.7)",
+            font=dict(color="white" if getattr(item, 'is_heavy', False) else "black", size=14, family="Arial Black"),
+            bgcolor="rgba(0, 0, 0, 0.6)" if getattr(item, 'is_heavy', False) else "rgba(255, 255, 255, 0.7)",
             borderpad=2
         ))
 
