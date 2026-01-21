@@ -4,15 +4,15 @@ import plotly.graph_objects as go
 from py3dbp import Packer, Bin, Item
 
 # ==========================================
-# 0. [핵심] 회전 금지 강제 패치 (오류 수정됨)
+# 0. [핵심] 회전 금지 강제 패치 (에러 수정 완료)
 # ==========================================
-# py3dbp 라이브러리가 박스를 돌리는 것을 원천 차단합니다.
+# py3dbp 라이브러리가 박스를 돌리는 것을 막고, 입력된 방향(0번) 그대로만 적재합니다.
 def no_rotation_put_item(self, item, pivot):
     fit = False
     valid_item_position = item.position
     item.position = pivot
     
-    # [수정] 회전 시도 루프를 제거하고, 0번(원본 방향)만 시도
+    # [핵심] 회전 타입 0번(입력한 W,H,D 그대로)만 시도하도록 강제
     item.rotation_type = 0 
     
     dimension = item.get_dimension()
@@ -20,7 +20,8 @@ def no_rotation_put_item(self, item, pivot):
     if self.can_hold(item, pivot, dimension):
         fit = True
         self.items.append(item)
-        # [삭제] 에러를 유발하던 self.total_weight += item.weight 코드 삭제
+        # [수정] 에러를 유발하던 total_weight 수정 코드 삭제
+        # (py3dbp는 items 리스트를 통해 자동으로 무게를 계산하므로 별도 수정 불필요)
 
     if not fit:
         item.position = valid_item_position
@@ -33,7 +34,7 @@ Bin.put_item = no_rotation_put_item
 # ==========================================
 # 1. 설정 및 차량 데이터
 # ==========================================
-st.set_page_config(layout="wide", page_title="물류 적재 시뮬레이터 (Final Fix)")
+st.set_page_config(layout="wide", page_title="물류 적재 시뮬레이터 (Final)")
 
 # 차량 제원 (mm, kg)
 TRUCK_DB = {
@@ -71,14 +72,16 @@ def create_items_from_df(df):
         try:
             name = str(row['박스번호'])
             
-            # [요청 반영] 파일의 치수 그대로 사용 (임의 정렬 X)
+            # [요청 반영] 파일의 치수 그대로 사용
             w = float(row['폭'])
             h = float(row['높이'])
             l = float(row['길이'])
             weight = float(row['중량'])
             
             # Item 생성 (이름, 가로, 높이, 세로, 무게)
-            # 엑셀의 '폭' -> Width, '높이' -> Height, '길이' -> Depth
+            # 엑셀의 '폭' -> Width (X축)
+            # 엑셀의 '높이' -> Height (Z축, 수직)
+            # 엑셀의 '길이' -> Depth (Y축, 차량길이방향)
             item = Item(name, w, h, l, weight)
             
             # 시각화용 속성
