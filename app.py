@@ -4,111 +4,118 @@ import plotly.graph_objects as go
 import time
 
 # ==========================================
-# 1. 커스텀 적재 엔진 (처음부터 새로 작성)
+# 1. 커스텀 물리 엔진 (Gravity & Collision)
 # ==========================================
-# 외부 라이브러리(py3dbp) 없이 직접 계산하므로 에러가 날 수 없습니다.
 
 class Box:
     def __init__(self, name, w, h, d, weight):
         self.name = name
-        self.w = w  # 폭 (x)
-        self.h = h  # 높이 (z)
-        self.d = d  # 길이 (y)
+        self.w = w
+        self.h = h
+        self.d = d
         self.weight = weight
         self.x = 0
         self.y = 0
         self.z = 0
-        self.is_heavy = False # 시각화용 태그
+        self.is_heavy = False
 
-    def get_volume(self):
+    @property
+    def volume(self):
         return self.w * self.h * self.d
 
 class Truck:
     def __init__(self, name, w, h, d, max_weight):
         self.name = name
-        self.w = w          # 폭
-        self.h = h          # 높이 (제한 높이 1300이 들어올 예정)
+        self.w = w
+        self.h = h          # 제한 높이 (1300)
         self.d = d          # 길이
         self.max_weight = max_weight
-        self.items = []     # 실린 박스들
+        self.items = []     # 적재된 박스들
         self.total_weight = 0
-        
-        # 적재 위치 관리를 위한 기준점(Pivot) 리스트
-        # (0,0,0)에서 시작
+        # 기준점 (Pivot): (x, y, z) 후보군
         self.pivots = [[0, 0, 0]] 
 
     def put_item(self, item):
         """
-        박스를 적재 시도하는 함수 (회전 로직 아예 없음)
+        박스 적재 시도 (충돌 체크 + 지지 기반 체크)
         """
         fit = False
-        valid_pivots = self.pivots 
         
-        # 현재 무게 체크
+        # 무게 초과 체크
         if self.total_weight + item.weight > self.max_weight:
             return False
 
-        # 가능한 모든 기준점(빈 공간)을 순회하며 넣어봄
-        for p in valid_pivots:
-            # 박스를 해당 위치에 놓았을 때 트럭 밖으로 나가는지 확인
-            if (p[0] + item.w > self.w) or \
-               (p[1] + item.d > self.d) or \
-               (p[2] + item.h > self.h):
-                continue # 범위 초과
+        # Z(높이) -> Y(안쪽) -> X(왼쪽) 순으로 정렬하여 
+        # "바닥부터", "안쪽부터" 채우도록 유도
+        self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
 
-            # 이미 실린 다른 박스들과 겹치는지 확인 (충돌 체크)
-            overlap = False
-            for exist in self.items:
-                if self.intersect(item, p, exist):
-                    overlap = True
-                    break
+        for p in self.pivots:
+            px, py, pz = p
             
-            if not overlap:
-                # 적재 성공!
-                item.x, item.y, item.z = p
-                self.items.append(item)
-                self.total_weight += item.weight
-                fit = True
-                break
+            # 1. 트럭 범위 벗어나는지 체크
+            if (px + item.w > self.w) or (py + item.d > self.d) or (pz + item.h > self.h):
+                continue
+
+            # 2. 다른 박스와 충돌 체크
+            if self._check_collision(item, px, py, pz):
+                continue
+
+            # 3. [핵심] 바닥 지지 여부 체크 (Gravity)
+            # 공중에 뜨지 않으려면 아래쪽에 60% 이상의 면적이 받쳐줘야 함
+            if not self._check_support(item, px, py, pz):
+                continue
+
+            # 적재 성공
+            item.x, item.y, item.z = px, py, pz
+            self.items.append(item)
+            self.total_weight += item.weight
+            fit = True
+            break
         
         if fit:
-            # 기준점 업데이트 (새로운 박스 주변으로 새 기준점 생성)
-            # 1. x축 방향 (박스 오른쪽)
+            # 새로운 기준점 생성 (새 박스의 오른쪽, 뒤쪽, 위쪽)
             self.pivots.append([item.x + item.w, item.y, item.z])
-            # 2. y축 방향 (박스 뒤쪽 - 길이방향)
             self.pivots.append([item.x, item.y + item.d, item.z])
-            # 3. z축 방향 (박스 위쪽)
             self.pivots.append([item.x, item.y, item.z + item.h])
-            
-            # 유효하지 않은 기준점(다른 박스 내부 등) 정리 로직은 생략(단순화)하되
-            # Z->Y->X 순서로 정렬하여 안쪽/아래쪽부터 채우도록 유도
-            self.pivots.sort(key=lambda x: (x[2], x[1], x[0]))
+            # (최적화를 위해 불필요한 Pivot 제거 로직은 생략)
             
         return fit
 
-    def intersect(self, item, pos, exist_item):
-        """두 박스의 충돌 감지 (AABB 충돌 알고리즘)"""
-        # 새 박스의 좌표 범위
-        ix, iy, iz = pos
-        iw, id_, ih = item.w, item.d, item.h
-        
-        # 기존 박스의 좌표 범위
-        ex, ey, ez = exist_item.x, exist_item.y, exist_item.z
-        ew, ed, eh = exist_item.w, exist_item.d, exist_item.h
+    def _check_collision(self, item, x, y, z):
+        """기존 박스들과 겹치는지 확인 (AABB 충돌)"""
+        for exist in self.items:
+            if (x < exist.x + exist.w and x + item.w > exist.x and
+                y < exist.y + exist.d and y + item.d > exist.y and
+                z < exist.z + exist.h and z + item.h > exist.z):
+                return True
+        return False
 
-        return (
-            ix < ex + ew and ix + iw > ex and
-            iy < ey + ed and iy + id_ > ey and
-            iz < ez + eh and iz + ih > ez
-        )
+    def _check_support(self, item, x, y, z):
+        """
+        박스 아래가 비어있는지 확인 (Support Logic)
+        z=0이면 바닥이니 OK.
+        z>0이면 바로 아래(z-height)에 있는 박스들과 접촉 면적 계산.
+        """
+        if z == 0: return True # 바닥은 무조건 지지됨
+
+        support_area = 0
+        required_area = item.w * item.d * 0.6 # 최소 60%는 걸쳐져 있어야 함
+
+        for exist in self.items:
+            # 바로 아래층에 있는 박스인가? (오차범위 1mm)
+            if abs((exist.z + exist.h) - z) < 1.0:
+                # 겹치는 면적 계산 (Intersection of Rectangles)
+                ox = max(0, min(x + item.w, exist.x + exist.w) - max(x, exist.x))
+                oy = max(0, min(y + item.d, exist.y + exist.d) - max(y, exist.y))
+                support_area += ox * oy
+
+        return support_area >= required_area
 
 # ==========================================
 # 2. 설정 및 데이터
 # ==========================================
-st.set_page_config(layout="wide", page_title="물류 적재 시뮬레이터 (Standalone)")
+st.set_page_config(layout="wide", page_title="물류 적재 시뮬레이터 (Physics Engine)")
 
-# 차량 제원 (mm, kg)
-# 실제 높이는 2350이지만, 계산은 1300으로 제한할 것임
 TRUCK_DB = {
     "5톤":  {"w": 2350, "real_h": 2350, "l": 6200,  "weight": 7000},
     "8톤":  {"w": 2350, "real_h": 2350, "l": 7300,  "weight": 10000},
@@ -118,12 +125,11 @@ TRUCK_DB = {
 }
 
 # ==========================================
-# 3. 로직 함수
+# 3. 데이터 로드 및 최적화 로직
 # ==========================================
 
 def load_data(df):
     items = []
-    # 중량 상위 10% 기준 계산
     try:
         weights = pd.to_numeric(df['중량'], errors='coerce').dropna().tolist()
         sorted_weights = sorted(weights, reverse=True)
@@ -135,12 +141,12 @@ def load_data(df):
     for index, row in df.iterrows():
         try:
             name = str(row['박스번호'])
+            # [규칙] 회전 절대 금지 (파일 그대로)
             w = float(row['폭'])
             h = float(row['높이'])
             l = float(row['길이'])
             weight = float(row['중량'])
             
-            # 박스 객체 생성 (순수 파이썬 클래스)
             box = Box(name, w, h, l, weight)
             box.is_heavy = (weight >= heavy_threshold)
             items.append(box)
@@ -150,109 +156,129 @@ def load_data(df):
 
 def run_optimization(all_items):
     remaining_items = all_items[:]
-    used_trucks = [] # 결과로 배차된 트럭들 (Truck 객체)
+    used_trucks = [] 
     
-    # 트럭 타입 정렬 (작은 차 -> 큰 차)
+    # 작은 차 -> 큰 차 순서
     truck_types = sorted(TRUCK_DB.keys(), key=lambda k: TRUCK_DB[k]['weight'])
 
     while remaining_items:
         best_truck = None
         best_score = -1
         
-        # 현재 남은 짐으로 모든 차종 시뮬레이션
+        # 모든 차종 시뮬레이션
         for t_name in truck_types:
             spec = TRUCK_DB[t_name]
-            # [핵심] 높이 제한 1.3m (1300mm) 적용
-            limit_h = 1300
+            limit_h = 1300 # [규칙] 높이 제한 1.3m
             
-            # 가상 트럭 생성
             temp_truck = Truck(t_name, spec['w'], limit_h, spec['l'], spec['weight'])
             
-            # 남은 짐들을 큰 것(부피)부터 넣어봄 -> 빈 공간 최소화
-            # (매 시뮬레이션마다 복사본으로 테스트)
-            test_items = sorted(remaining_items, key=lambda x: x.get_volume(), reverse=True)
+            # [전략] 부피가 큰 짐부터 넣어야 바닥이 안정적으로 깔림
+            test_items = sorted(remaining_items, key=lambda x: x.volume, reverse=True)
             packed_count = 0
             
             for item in test_items:
-                # 박스 복제(좌표 초기화)하여 넣기
+                # 상태 복사해서 시도
                 item_copy = Box(item.name, item.w, item.h, item.d, item.weight)
                 if temp_truck.put_item(item_copy):
                     packed_count += 1
             
-            # 점수 계산
             if packed_count > 0:
-                # 1. 남은 짐을 몽땅 실었다면 -> 가장 작은(가벼운) 트럭이 1등
+                # 점수 계산 (많이 실을수록, 작은 차일수록 좋음)
                 if packed_count == len(remaining_items):
                     score = 100000 - spec['weight']
                 else:
-                    # 2. 다 못 실었다면 -> 얼마나 꽉 채웠는지(무게+부피) 평가
                     util_w = temp_truck.total_weight / spec['weight']
-                    util_v = sum([i.get_volume() for i in temp_truck.items]) / (spec['w'] * limit_h * spec['l'])
+                    util_v = sum([i.volume for i in temp_truck.items]) / (spec['w'] * limit_h * spec['l'])
                     score = (util_w + util_v) * 100
                 
                 if score > best_score:
                     best_score = score
                     best_truck = temp_truck
 
-        # 최적 트럭 확정
         if best_truck and len(best_truck.items) > 0:
-            # 트럭 이름에 번호 부여
             best_truck.name = f"{best_truck.name} (No.{len(used_trucks)+1})"
             used_trucks.append(best_truck)
             
-            # 실린 박스들을 남은 목록에서 제거
             packed_names = [i.name for i in best_truck.items]
             remaining_items = [i for i in remaining_items if i.name not in packed_names]
         else:
-            # 더 이상 적재 불가 (짐이 너무 크거나 오류)
             break
             
     return used_trucks
 
+# ==========================================
+# 4. 고퀄리티 3D 시각화 (디자인 개선)
+# ==========================================
 def draw_truck_3d(truck):
     fig = go.Figure()
     spec = TRUCK_DB[truck.name.split(' ')[0]]
     W, L, Real_H = spec['w'], spec['l'], spec['real_h']
     
-    # 1. 트럭 바닥 (진한 회색)
-    fig.add_trace(go.Mesh3d(x=[0,W,W,0], y=[0,0,L,L], z=[0,0,0,0], color='rgb(100,100,100)', opacity=1.0, name='바닥'))
+    # --- [트럭 디자인] ---
     
-    # 2. 트럭 벽면 (반투명)
-    wall_c = 'lightblue'
-    wall_o = 0.1
-    # 좌측(x=0), 우측(x=W), 앞면(y=L)
-    fig.add_trace(go.Mesh3d(x=[0,0,0,0], y=[0,L,L,0], z=[0,0,Real_H,Real_H], color=wall_c, opacity=wall_o, showlegend=False)) # 좌
-    fig.add_trace(go.Mesh3d(x=[W,W,W,W], y=[0,L,L,0], z=[0,0,Real_H,Real_H], color=wall_c, opacity=wall_o, showlegend=False)) # 우
-    fig.add_trace(go.Mesh3d(x=[0,W,W,0], y=[L,L,L,L], z=[0,0,Real_H,Real_H], color=wall_c, opacity=wall_o, showlegend=False)) # 앞
-
-    # 3. 헤드(Cabin) 장식
-    head_len = 1500
+    # 1. 섀시(바닥 프레임) - 진한 회색
     fig.add_trace(go.Mesh3d(
-        x=[0,W,W,0, 0,W,W,0], 
-        y=[L,L,L+head_len,L+head_len, L,L,L+head_len,L+head_len],
-        z=[0,0,0,0, Real_H*0.7,Real_H*0.7,Real_H*0.7,Real_H*0.7],
-        i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6],
-        color='rgb(80,80,80)', name='헤드'
+        x=[0, W, W, 0], y=[0, 0, L, L], z=[0, 0, 0, 0],
+        color='rgb(50, 50, 50)', opacity=1.0, name='섀시'
     ))
 
-    # 4. 프레임 선
-    lx = [0,W,W,0,0, 0,W,W,0,0, W,W,0,0, W,W]
-    ly = [0,0,L,L,0, 0,0,L,L,0, 0,0,L,L, L,L]
-    lz = [0,0,0,0,0, Real_H,Real_H,Real_H,Real_H,Real_H, 0,Real_H,Real_H,0, 0,Real_H]
-    fig.add_trace(go.Scatter3d(x=lx, y=ly, z=lz, mode='lines', line=dict(color='black', width=3), showlegend=False))
-    
-    # 5. 높이 제한선 (1.3m)
-    fig.add_trace(go.Scatter3d(x=[0,W,W,0,0], y=[0,0,L,L,0], z=[1300]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), name='높이제한(1.3m)'))
+    # 2. 바퀴 (단순화된 검은 박스 4개)
+    wheel_w, wheel_r, wheel_h = 300, 500, 300 # 바퀴 크기
+    wheel_z = -300
+    wheel_positions = [
+        (0 - wheel_w, L*0.15), (W, L*0.15), # 앞바퀴
+        (0 - wheel_w, L*0.85), (W, L*0.85)  # 뒷바퀴
+    ]
+    for wx, wy in wheel_positions:
+        fig.add_trace(go.Mesh3d(
+            x=[wx, wx+wheel_w, wx+wheel_w, wx, wx, wx+wheel_w, wx+wheel_w, wx],
+            y=[wy, wy, wy+wheel_r, wy+wheel_r, wy, wy, wy+wheel_r, wy+wheel_r],
+            z=[wheel_z, wheel_z, wheel_z, wheel_z, 0, 0, 0, 0],
+            i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6],
+            color='black', flatshading=True, showlegend=False
+        ))
 
-    # 6. 박스 그리기
+    # 3. 헤드 (Cabin) - 더 디테일하게
+    cabin_len = 1800
+    cabin_h = 2500
+    cy_start = L + 100 # 적재함과 약간 띄움
+    
+    # 헤드 본체
+    fig.add_trace(go.Mesh3d(
+        x=[0, W, W, 0, 0, W, W, 0],
+        y=[cy_start, cy_start, cy_start+cabin_len, cy_start+cabin_len, cy_start, cy_start, cy_start+cabin_len, cy_start+cabin_len],
+        z=[0, 0, 0, 0, cabin_h, cabin_h, cabin_h, cabin_h],
+        i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6],
+        color='rgb(30, 100, 180)', name='트럭 헤드'
+    ))
+    
+    # 4. 적재함 벽면 (반투명 아크릴 느낌)
+    wall_color = 'rgba(200, 220, 255, 0.2)'
+    # 좌, 우, 앞(운전석쪽), 뒤(문)
+    # 좌측
+    fig.add_trace(go.Mesh3d(x=[0,0,0,0], y=[0,L,L,0], z=[0,0,Real_H,Real_H], color=wall_color, showlegend=False))
+    # 우측
+    fig.add_trace(go.Mesh3d(x=[W,W,W,W], y=[0,L,L,0], z=[0,0,Real_H,Real_H], color=wall_color, showlegend=False))
+    # 앞쪽 (헤드 쪽)
+    fig.add_trace(go.Mesh3d(x=[0,W,W,0], y=[L,L,L,L], z=[0,0,Real_H,Real_H], color='rgba(150, 170, 200, 0.4)', showlegend=False))
+
+    # 5. 프레임 (외곽선)
+    lines_x = [0,W,W,0,0, 0,W,W,0,0, W,W,0,0, W,W]
+    lines_y = [0,0,L,L,0, 0,0,L,L,0, 0,0,L,L, L,L]
+    lines_z = [0,0,0,0,0, Real_H,Real_H,Real_H,Real_H,Real_H, 0,Real_H,Real_H,0, 0,Real_H]
+    fig.add_trace(go.Scatter3d(x=lines_x, y=lines_y, z=lines_z, mode='lines', line=dict(color='black', width=3), showlegend=False))
+    
+    # 6. 높이 제한선 (1.3m)
+    fig.add_trace(go.Scatter3d(x=[0,W,W,0,0], y=[0,0,L,L,0], z=[1300]*5, mode='lines', line=dict(color='red', width=5, dash='dash'), name='높이제한(1.3m)'))
+
+    # --- [박스 그리기] ---
     for item in truck.items:
-        # 좌표(item.x, item.y, item.z)는 좌측 하단 기준
         x, y, z = item.x, item.y, item.z
-        w, h, d = item.w, item.h, item.d # d는 길이(y방향)
+        w, h, d = item.w, item.h, item.d
         
-        # 색상 (상위 10% 빨강)
+        # 색상 (상위 10% 강조)
         color = '#FF4B4B' if item.is_heavy else '#E0E0E0'
-        opacity = 1.0 if item.is_heavy else 0.8
+        opacity = 1.0 if item.is_heavy else 0.9
         
         # 박스 메쉬
         fig.add_trace(go.Mesh3d(
@@ -267,23 +293,34 @@ def draw_truck_3d(truck):
         ex = [x,x+w,x+w,x,x, x,x+w,x+w,x,x, x+w,x+w,x+w,x+w, x,x]
         ey = [y,y,y+d,y+d,y, y,y,y+d,y+d,y, y,y,y+d,y+d, y+d,y+d]
         ez = [z,z,z,z,z, z+h,z+h,z+h,z+h,z+h, z,z+h,z+h,z, z,z+h]
-        fig.add_trace(go.Scatter3d(x=ex, y=ey, z=ez, mode='lines', line=dict(color='black', width=1), showlegend=False))
+        fig.add_trace(go.Scatter3d(x=ex, y=ey, z=ez, mode='lines', line=dict(color='black', width=2), showlegend=False))
         
         # 박스 번호 (측면)
         fig.add_trace(go.Scatter3d(
             x=[x + w/2], y=[y], z=[z + h/2],
             mode='text', text=[item.name], textposition="middle center",
-            textfont=dict(size=12, color='black', weight='bold'), showlegend=False
+            textfont=dict(size=14, color='black', weight='bold'), showlegend=False
         ))
 
-    fig.update_layout(scene=dict(aspectmode='data', xaxis_visible=False, yaxis_visible=False, zaxis_visible=False), margin=dict(l=0,r=0,b=0,t=0), height=600)
+    # 카메라 및 축 설정
+    fig.update_layout(
+        scene=dict(
+            aspectmode='data', # 비율 유지
+            xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False),
+            camera=dict(eye=dict(x=2.0, y=1.5, z=1.5)) # 시점 조정
+        ), 
+        margin=dict(l=0,r=0,b=0,t=0), 
+        height=700,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)'
+    )
     return fig
 
 # ==========================================
-# 4. 메인 UI
+# 5. 메인 UI
 # ==========================================
-st.title("🚛 Custom 적재 시뮬레이터 (v1.0)")
-st.caption("✅ 특징: 라이브러리 미사용(에러없음) | 회전금지 | 1.3m 제한 | 11/5톤 최적화")
+st.title("🚛 물류 적재 시뮬레이터 (Physics Engine)")
+st.caption("✅ 물리엔진 적용: 공중부양 방지(Gravity) | 회전금지 | 1.3m 제한 | 11/5톤 최적화")
 
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
 
@@ -294,7 +331,6 @@ if uploaded_file:
         else:
             df = pd.read_excel(uploaded_file)
         
-        # 컬럼명 공백 제거
         df.columns = [c.strip() for c in df.columns]
         
         st.subheader(f"📋 데이터 확인 ({len(df)}건)")
@@ -303,9 +339,9 @@ if uploaded_file:
         if st.button("최적 배차 실행", type="primary"):
             items = load_data(df)
             if not items:
-                st.error("데이터 변환 실패. 컬럼명(박스번호, 폭, 높이, 길이, 중량)을 확인하세요.")
+                st.error("데이터 변환 실패.")
             else:
-                with st.spinner("자체 알고리즘으로 계산 중입니다..."):
+                with st.spinner("물리 엔진으로 적재 시뮬레이션 중... (Support Check)"):
                     trucks = run_optimization(items)
                     
                     if trucks:
