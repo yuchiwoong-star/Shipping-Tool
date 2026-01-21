@@ -1,12 +1,12 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import numpy as np
+import numpy as np # <-- 이 부분 추가했습니다!
 import math
 import uuid
 
 # ==========================================
-# 1. 커스텀 물리 엔진 (핵심 로직)
+# 1. 커스텀 물리 엔진 (기존 로직 100% 동결)
 # ==========================================
 class Box:
     def __init__(self, name, w, h, d, weight):
@@ -89,15 +89,13 @@ class Truck:
 st.set_page_config(layout="wide", page_title="Ultimate Load Planner (Final Rule)")
 
 # [수정] 차량 제원 및 비용 테이블 (단위: mm, kg, 원)
-# 비용(cost)은 임의로 설정된 예시값입니다. 실제 비용에 맞게 수정 가능합니다.
-# 높이(h)는 실제 차량 높이이나, 로직에서 1300으로 제한됩니다.
 TRUCK_DB = {
     "1톤":    {"w": 1600, "l": 2800, "h": 1700, "weight": 1000, "cost": 100000},
     "1.4톤":  {"w": 1650, "l": 3400, "h": 1800, "weight": 1400, "cost": 130000},
     "2.5톤":  {"w": 1800, "l": 4300, "h": 2000, "weight": 2500, "cost": 180000},
     "3.5톤":  {"w": 2000, "l": 4800, "h": 2000, "weight": 3500, "cost": 220000},
     "5톤":    {"w": 2350, "l": 6200, "h": 2350, "weight": 5000, "cost": 300000},
-    "5톤축":  {"w": 2350, "l": 7300, "h": 2350, "weight": 8000, "cost": 350000}, # 적재량 8톤으로 가정
+    "5톤축":  {"w": 2350, "l": 7300, "h": 2350, "weight": 8000, "cost": 350000}, 
     "11톤":   {"w": 2350, "l": 9600, "h": 2400, "weight": 11000, "cost": 450000},
     "18톤":   {"w": 2350, "l": 10200, "h": 2500, "weight": 18000, "cost": 550000},
     "25톤":   {"w": 2350, "l": 10200, "h": 2500, "weight": 25000, "cost": 650000},
@@ -131,9 +129,6 @@ def load_data(df):
 
 def run_optimization(all_items):
     # [수정] 비용 최소화 알고리즘 (간소화 버전)
-    # 모든 짐을 실을 수 있는 가장 저렴한 '단일 차량'을 우선 찾고,
-    # 안 되면 '가장 큰 차'부터 채우는 방식 (Greedy)
-    
     remaining_items = all_items[:]
     used_trucks = []
     
@@ -164,8 +159,6 @@ def run_optimization(all_items):
             return [temp_truck]
 
     # 2. 단일 차량으로 불가하면, 큰 차부터 채우기 (Greedy)
-    # 효율을 위해 '가성비(무게당 비용)'가 좋은 순서가 아니라, 그냥 큰 차부터 채워서 대수를 줄임
-    # (더 정교한 조합 알고리즘은 복잡도가 높아 여기선 Greedy 방식 사용)
     truck_types_desc = sorted(TRUCK_DB.keys(), key=lambda k: TRUCK_DB[k]['weight'], reverse=True)
     
     while remaining_items:
@@ -188,7 +181,6 @@ def run_optimization(all_items):
                     packed_count += 1
                     current_packed_items.append(item.name)
             
-            # 가장 많이 싣는 차를 선택 (단순화)
             if packed_count > max_packed_count:
                 max_packed_count = packed_count
                 best_truck = temp_truck
@@ -265,8 +257,8 @@ def draw_truck_3d(truck, camera_view="iso"):
     offset = 1200
     dim_line([0,-offset,0], [W,-offset,0], f"폭: {int(W)}")
     dim_line([-offset,0,0], [-offset,L,0], f"길이: {int(L)}")
-    dim_line([-offset,L,0], [-offset,L,LIMIT_H], f"높이제한(최대4단): {int(LIMIT_H)}", c='red')
-    fig.add_trace(go.Scatter3d(x=[0,W,W,0,0], y=[0,0,L,L,0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False))
+    dim_line([-offset,L,0], [-offset,L,1300], f"높이제한(최대4단): {int(LIMIT_H)}", c='red')
+    fig.add_trace(go.Scatter3d(x=[0,W,W,0,0], y=[0,0,L,L,0], z=[1300]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False))
 
     # 5. 박스 (규칙 4: 빨간색)
     for item in truck.items:
