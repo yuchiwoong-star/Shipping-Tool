@@ -202,7 +202,7 @@ def run_optimization(all_items):
     return final_trucks
 
 # ==========================================
-# 4. 시각화 (UI 디자인 고도화)
+# 4. 시각화 (UI 디자인 고도화 - 에러 수정됨)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -281,33 +281,33 @@ def draw_truck_3d(truck, camera_view="iso"):
         cx, cy, cz = x + w/2, y + d/2, z + h/2
         annotations.append(dict(x=cx, y=cy, z=cz, text=f"<b>{item.name}</b>", xanchor="center", yanchor="middle", showarrow=False, font=dict(color="white" if getattr(item, 'is_heavy', False) else "black", size=14, family="Arial Black"), bgcolor="rgba(0, 0, 0, 0.6)" if getattr(item, 'is_heavy', False) else "rgba(255, 255, 255, 0.7)", borderpad=2))
 
-    # [6] 뷰 설정 (Grid & Red Box)
+    # [6] 뷰 설정 (Grid & Red Box) - [수정됨] titlefont 제거 후 update_layout에서 처리
     if camera_view == "top": eye = dict(x=0, y=0.1, z=2.5); up = dict(x=0, y=1, z=0)
     elif camera_view == "side": eye = dict(x=2.5, y=0, z=0.5); up = dict(x=0, y=0, z=1)
     else: eye = dict(x=2.0, y=-1.5, z=1.2); up = dict(x=0, y=0, z=1)
     
-    # [수정됨] 축 설정: 빨간색 테두리 박스 + 그리드 + 치수 표시
+    # 공통 축 설정 (titlefont 삭제됨)
     axis_config = dict(
         showbackground=False,
         showgrid=True,
         gridcolor='rgba(200, 200, 200, 0.5)',
         gridwidth=1,
-        dtick=1000, # 1000mm 단위 그리드
+        dtick=1000, 
         showline=True,
         linewidth=2,
-        linecolor='red', # 마우스 영역 빨간선
+        linecolor='red', 
         mirror=True,
-        showticklabels=True, # 치수 표시
-        titlefont=dict(size=10),
+        showticklabels=True, 
         tickfont=dict(size=10)
     )
     
     fig.update_layout(
         scene=dict(
             aspectmode='data', 
-            xaxis=dict(**axis_config, title='Width (mm)'),
-            yaxis=dict(**axis_config, title='Length (mm)'),
-            zaxis=dict(**axis_config, title='Height (mm)'),
+            # 타이틀을 딕셔너리로 설정하여 폰트 적용
+            xaxis=dict(**axis_config, title=dict(text='Width (mm)', font=dict(size=10))),
+            yaxis=dict(**axis_config, title=dict(text='Length (mm)', font=dict(size=10))),
+            zaxis=dict(**axis_config, title=dict(text='Height (mm)', font=dict(size=10))),
             bgcolor='white', camera=dict(eye=eye, up=up), annotations=annotations
         ),
         margin=dict(l=0,r=0,b=0,t=0), height=700,
