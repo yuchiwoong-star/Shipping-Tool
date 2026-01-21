@@ -25,12 +25,13 @@ class Box:
         return self.w * self.h * self.d
 
 class Truck:
-    def __init__(self, name, w, h, d, max_weight):
+    def __init__(self, name, w, h, d, max_weight, cost):
         self.name = name
         self.w = float(w)
         self.h = float(h)
         self.d = float(d)
         self.max_weight = float(max_weight)
+        self.cost = int(cost) # 운송 비용 저장
         self.items = []
         self.total_weight = 0.0
         self.pivots = [[0.0, 0.0, 0.0]]
@@ -95,16 +96,15 @@ class Truck:
                 oy = max(0.0, min(y + item.d, exist.y + exist.d) - max(y, exist.y))
                 support_area += ox * oy
         
-        # [수정됨] 규칙 3: 바닥 지지율 80% 이상
+        # [규칙 3] 바닥 지지율 80% 이상
         return support_area >= item_area * 0.8
 
 # ==========================================
 # 2. 설정 및 데이터 (규칙 0 반영)
 # ==========================================
-st.set_page_config(layout="wide", page_title="Ultimate Load Planner (Min-Cost)")
+st.set_page_config(layout="wide", page_title="Ultimate Load Planner (Cost Optimized)")
 
-# [수정됨] 운송단가표 기반 DB 재작성
-# real_h는 시각화용 높이이며, 실제 적재 제한(limit_h)은 로직에서 1300으로 고정됨
+# [수정됨] 운송단가표 기반 DB
 TRUCK_DB = {
     "1톤":   {"w": 1600, "real_h": 2350, "l": 2800,  "weight": 1490,  "cost": 78000},
     "2.5톤": {"w": 1900, "real_h": 2350, "l": 4200,  "weight": 3490,  "cost": 110000},
@@ -153,77 +153,102 @@ def load_data(df):
     return items
 
 def run_optimization(all_items):
-    remaining_items = all_items[:]
-    used_trucks = [] 
-    
-    # [수정됨] 최소 비용 배차를 위해 'cost' 오름차순으로 정렬
-    truck_types = sorted(TRUCK_DB.keys(), key=lambda k: TRUCK_DB[k]['cost'])
-    
-    while remaining_items:
-        best_truck = None
-        best_score = -1
+    # [Helper] 나머지 아이템을 해결하는 그리디 알고리즘 (효율성 중심)
+    def solve_remaining_greedy(current_items):
+        used = []
+        rem = current_items[:]
         
-        # 모든 차종을 비용 싼 순서대로 대입
-        for t_name in truck_types:
-            spec = TRUCK_DB[t_name]
-            limit_h = 1300 # 규칙 2: 1.3m 제한
-            
-            # 임시 트럭 생성
-            temp_truck = Truck(t_name, spec['w'], limit_h, spec['l'], spec['weight'])
-            
-            # 큰 박스부터 넣어보기 (부피순 정렬)
-            test_items = sorted(remaining_items, key=lambda x: x.volume, reverse=True)
-            packed_count = 0
-            
-            for item in test_items:
-                item_copy = Box(item.name, item.w, item.h, item.d, item.weight)
-                item_copy.is_heavy = item.is_heavy 
-                if temp_truck.put_item(item_copy):
-                    packed_count += 1
-            
-            # 점수 계산 (많이 실리고, 효율적인 차)
-            if packed_count > 0:
-                # 모든 짐을 다 실을 수 있다면, 비용이 가장 싼 이 차가 베스트 (loop 탈출 가능)
-                if packed_count == len(remaining_items):
-                    best_truck = temp_truck
-                    break # 비용 싼 순서대로 돌기 때문에 즉시 채택
+        while rem:
+            candidates = []
+            for t_name in TRUCK_DB:
+                spec = TRUCK_DB[t_name]
+                t = Truck(t_name, spec['w'], 1300, spec['l'], spec['weight'], spec['cost'])
                 
-                # 다 못 싣는다면 적재 효율 계산
-                util_w = temp_truck.total_weight / spec['weight']
-                util_v = sum([i.volume for i in temp_truck.items]) / (spec['w'] * limit_h * spec['l'])
-                score = (util_w + util_v) * 100
+                # 시뮬레이션
+                test_i = sorted(rem, key=lambda x: x.volume, reverse=True)
+                count = 0
+                w_sum = 0
+                for item in test_i:
+                    if t.put_item(Box(item.name, item.w, item.h, item.d, item.weight)):
+                        count += 1; w_sum += item.weight
                 
-                # 이전 차보다 효율이 압도적으로 좋으면 교체 (비용이 조금 비싸더라도 많이 실으면 이득일 수 있음)
-                # 다만, 여기서는 단순화하여 '현재까지 찾은 것 중 최고 효율'을 찾음
-                if score > best_score:
-                    best_score = score
-                    best_truck = temp_truck
+                if count > 0:
+                    candidates.append({
+                        'truck': t,
+                        'is_all': (count == len(rem)),
+                        'eff': w_sum / spec['cost'], # 비용 효율 (kg/원)
+                        'cost': spec['cost']
+                    })
+            
+            if not candidates: break
+            
+            # 선택 로직: 1.전부 실리는 것 중 최저가 -> 2.아니면 효율(가성비) 최고
+            fits_all = [c for c in candidates if c['is_all']]
+            if fits_all:
+                best_t = sorted(fits_all, key=lambda x: x['cost'])[0]['truck']
+            else:
+                best_t = sorted(candidates, key=lambda x: x['eff'], reverse=True)[0]['truck']
+                
+            used.append(best_t)
+            packed_n = [i.name for i in best_t.items]
+            rem = [i for i in rem if i.name not in packed_n]
+        return used
+
+    # [Main] 첫 번째 트럭 선택 최적화 (Lookahead)
+    best_solution = None
+    min_total_cost = float('inf')
+    
+    # 8가지 차종을 모두 첫 차로 가정하고 시뮬레이션
+    for start_truck_name in TRUCK_DB:
+        spec = TRUCK_DB[start_truck_name]
+        start_truck = Truck(start_truck_name, spec['w'], 1300, spec['l'], spec['weight'], spec['cost'])
         
-        if best_truck and len(best_truck.items) > 0:
-            best_truck.name = f"{best_truck.name} (No.{len(used_trucks)+1})"
-            used_trucks.append(best_truck)
+        # 첫 차 적재
+        items_sorted = sorted(all_items, key=lambda x: x.volume, reverse=True)
+        for item in items_sorted:
+             start_truck.put_item(Box(item.name, item.w, item.h, item.d, item.weight))
+        
+        if not start_truck.items: continue
+
+        # 나머지 적재 (Helper 호출)
+        packed_names = [i.name for i in start_truck.items]
+        remaining = [i for i in all_items if i.name not in packed_names]
+        
+        current_solution = [start_truck]
+        if remaining:
+            sub_solution = solve_remaining_greedy(remaining)
+            current_solution.extend(sub_solution)
+        
+        # 최종 검증: 모든 짐이 실렸는지 확인 (일부 실패 케이스 제외)
+        total_packed_count = sum([len(t.items) for t in current_solution])
+        if total_packed_count < len(all_items):
+            continue
+
+        # 비용 계산
+        current_total_cost = sum(t.cost for t in current_solution)
+        
+        # 최적해 갱신 (비용 최소화)
+        if current_total_cost < min_total_cost:
+            min_total_cost = current_total_cost
+            best_solution = current_solution
+    
+    # 결과 포맷팅
+    final_trucks = []
+    if best_solution:
+        for idx, t in enumerate(best_solution):
+            t.name = f"{t.name} (No.{idx+1})"
+            final_trucks.append(t)
             
-            # 적재된 화물 제거
-            packed_names = [i.name for i in best_truck.items]
-            remaining_items = [i for i in remaining_items if i.name not in packed_names]
-        else:
-            # 더 이상 적재 불가 시 중단
-            break
-            
-    return used_trucks
+    return final_trucks
 
 # ==========================================
 # 4. 시각화 (디자인 유지)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
-    # 이름에서 (No.1) 등을 제거하고 키 찾기
     original_name = truck.name.split(' (')[0]
-    if original_name not in TRUCK_DB:
-        # 혹시 모를 에러 방지용 (기본값 5톤)
-        spec = TRUCK_DB["5톤"]
-    else:
-        spec = TRUCK_DB[original_name]
+    if original_name not in TRUCK_DB: spec = TRUCK_DB["5톤"]
+    else: spec = TRUCK_DB[original_name]
         
     W, L, Real_H = spec['w'], spec['l'], spec['real_h']
     LIMIT_H = 1300
@@ -233,7 +258,6 @@ def draw_truck_3d(truck, camera_view="iso"):
     fig.add_trace(go.Mesh3d(x=[0, W, W, 0, 0, W, W, 0], y=[0, 0, L, L, 0, 0, L, L], z=[-chassis_h, -chassis_h, -chassis_h, -chassis_h, 0, 0, 0, 0], i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6], color='#222222', flatshading=True, name='섀시', showlegend=False))
 
     def create_realistic_wheel(cx, cy, cz, r, w):
-        # 타이어
         theta = np.linspace(0, 2*np.pi, 32)
         x_tire, y_tire, z_tire = [], [], []
         for t in theta:
@@ -241,49 +265,33 @@ def draw_truck_3d(truck, camera_view="iso"):
             y_tire.extend([cy + r*np.cos(t), cy + r*np.cos(t)])
             z_tire.extend([cz + r*np.sin(t), cz + r*np.sin(t)])
         fig.add_trace(go.Mesh3d(x=x_tire, y=y_tire, z=z_tire, alphahull=0, color='#333333', flatshading=True, showlegend=False, name='타이어', lighting=dict(ambient=1.0)))
-
-        # 트레드
         tread_x, tread_y, tread_z = [], [], []
         num_treads = 16
         for i in range(num_treads):
             t1 = (2 * math.pi / num_treads) * i
-            # 가로선
             tread_x.extend([cx - w/2, cx + w/2, None])
             tread_y.extend([cy + r*math.cos(t1), cy + r*math.cos(t1), None])
             tread_z.extend([cz + r*math.sin(t1), cz + r*math.sin(t1), None])
         fig.add_trace(go.Scatter3d(x=tread_x, y=tread_y, z=tread_z, mode='lines', line=dict(color='#111111', width=3), showlegend=False, name='트레드'))
-        
-        # 휠 허브
-        hub_r = r * 0.6
-        hub_w = w * 0.1
+        hub_r = r * 0.6; hub_w = w * 0.1
         theta_hub = np.linspace(0, 2*np.pi, 16)
-        x_hub, y_hub, z_hub = [], [], []
-        x_hub.append(cx + w/2 + hub_w); y_hub.append(cy); z_hub.append(cz)
+        x_hub, y_hub, z_hub = [], [], []; x_hub.append(cx + w/2 + hub_w); y_hub.append(cy); z_hub.append(cz)
         for t in theta_hub:
-            x_hub.append(cx + w/2)
-            y_hub.append(cy + hub_r*math.cos(t))
-            z_hub.append(cz + hub_r*math.sin(t))
-        i_hub = [0]*16
-        j_hub = list(range(1, 17))
-        k_hub = list(range(2, 17)) + [1]
+            x_hub.append(cx + w/2); y_hub.append(cy + hub_r*math.cos(t)); z_hub.append(cz + hub_r*math.sin(t))
+        i_hub = [0]*16; j_hub = list(range(1, 17)); k_hub = list(range(2, 17)) + [1]
         fig.add_trace(go.Mesh3d(x=x_hub, y=y_hub, z=z_hub, i=i_hub, j=j_hub, k=k_hub, color='#dddddd', flatshading=True, showlegend=False, name='휠 허브', lighting=dict(ambient=0.9)))
 
     wheel_r = 450; wheel_w = 280; wheel_z = -chassis_h - 100
     wheel_pos = [(-wheel_w/2, L*0.15), (W+wheel_w/2, L*0.15), (-wheel_w/2, L*0.30), (W+wheel_w/2, L*0.30), (-wheel_w/2, L*0.70), (W+wheel_w/2, L*0.70), (-wheel_w/2, L*0.85), (W+wheel_w/2, L*0.85)]
     for wx, wy in wheel_pos: create_realistic_wheel(wx, wy, wheel_z, wheel_r, wheel_w)
 
-    # 적재함 벽면 (Surface 사용)
-    wall_color_rgba = 'rgba(230, 230, 230, 0.4)'
-    frame_color = '#555555'; frame_width = 6
-
+    # 적재함 벽면 (Surface)
+    wall_color_rgba = 'rgba(230, 230, 230, 0.4)'; frame_color = '#555555'; frame_width = 6
     fig.add_trace(go.Surface(x=[[0, 0], [0, 0]], y=[[0, L], [0, L]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.4, hoverinfo='skip'))
     fig.add_trace(go.Surface(x=[[W, W], [W, W]], y=[[0, L], [0, L]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.4, hoverinfo='skip'))
     fig.add_trace(go.Surface(x=[[0, W], [0, W]], y=[[L, L], [L, L]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.4, hoverinfo='skip'))
     fig.add_trace(go.Surface(x=[[0, W], [0, W]], y=[[0, 0], [0, 0]], z=[[0, 0], [Real_H, Real_H]], colorscale=[[0, wall_color_rgba], [1, wall_color_rgba]], showscale=False, opacity=0.4, hoverinfo='skip'))
-
-    lines_x = [0,W,W,0,0, 0,W,W,0,0, W,W,0,0, W,W]
-    lines_y = [0,0,L,L,0, 0,0,L,L,0, 0,0,L,L, L,L]
-    lines_z = [0,0,0,0,0, Real_H,Real_H,Real_H,Real_H,Real_H, 0,Real_H,Real_H,0, 0,Real_H]
+    lines_x = [0,W,W,0,0, 0,W,W,0,0, W,W,0,0, W,W]; lines_y = [0,0,L,L,0, 0,0,L,L,0, 0,0,L,L, L,L]; lines_z = [0,0,0,0,0, Real_H,Real_H,Real_H,Real_H,Real_H, 0,Real_H,Real_H,0, 0,Real_H]
     fig.add_trace(go.Scatter3d(x=lines_x, y=lines_y, z=lines_z, mode='lines', line=dict(color=frame_color, width=frame_width), showlegend=False, hoverinfo='skip'))
 
     # --- [2] 치수선 ---
@@ -301,8 +309,6 @@ def draw_truck_3d(truck, camera_view="iso"):
     add_dimension((0, -OFFSET, 0), (W, -OFFSET, 0), f"폭 : {int(W)}")
     add_dimension((-OFFSET, 0, 0), (-OFFSET, L, 0), f"길이 : {int(L)}")
     add_dimension((-OFFSET, L, 0), (-OFFSET, L, LIMIT_H), f"높이제한(최대4단) : {int(LIMIT_H)}", color='red')
-    
-    # 1.3M 제한선 표시
     fig.add_trace(go.Scatter3d(x=[0,W,W,0,0], y=[0,0,L,L,0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False))
 
     # --- [3] 박스 ---
@@ -335,7 +341,7 @@ def draw_truck_3d(truck, camera_view="iso"):
 # 5. 메인 UI
 # ==========================================
 st.title("📦 Ultimate Load Planner (Cost Optimized)")
-st.caption("✅ 비용최적화 | 회전금지 | 1.3m 제한 | 80% 지지충족")
+st.caption("✅ 비용최적화(Lookahead) | 회전금지 | 1.3m 제한 | 80% 지지충족")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
@@ -360,14 +366,7 @@ if uploaded_file:
                     t_names = [t.name.split(' ')[0] for t in trucks]
                     from collections import Counter
                     cnt = Counter(t_names)
-                    
-                    # 비용 계산
-                    total_cost = 0
-                    for t in trucks:
-                         # 이름에서 톤수 추출하여 비용 매칭
-                         key = t.name.split(' ')[0]
-                         if key in TRUCK_DB:
-                             total_cost += TRUCK_DB[key]['cost']
+                    total_cost = sum(t.cost for t in trucks)
 
                     summary = ", ".join([f"{k} {v}대" for k,v in cnt.items()])
                     st.success(f"✅ 분석 완료: 총 {len(trucks)}대 ({summary}) | 예상 총 운송비: {total_cost:,}원")
@@ -389,9 +388,7 @@ if uploaded_file:
                                 st.markdown(f"### **{t.name}**")
                                 st.write(f"- 박스: **{len(t.items)}개**")
                                 st.write(f"- 중량: **{t.total_weight:,} kg**")
-                                t_key = t.name.split(' ')[0]
-                                if t_key in TRUCK_DB:
-                                    st.write(f"- 비용: **{TRUCK_DB[t_key]['cost']:,} 원**")
+                                st.write(f"- 비용: **{t.cost:,} 원**")
                                 with st.expander("목록 보기"): st.write(", ".join([b.name for b in t.items]))
                             with col2:
                                 st.plotly_chart(draw_truck_3d(t, st.session_state['view_mode']), use_container_width=True)
