@@ -100,20 +100,29 @@ TRUCK_DB = {
 }
 
 # ==========================================
-# 3. 로직 함수 (기존 유지)
+# 3. 로직 함수 (수정됨: 상위 10% 로직 강화)
 # ==========================================
 def load_data(df):
     items = []
     try:
+        # 중량 데이터 숫자 변환 및 NaN 제거
         weights = pd.to_numeric(df['중량'], errors='coerce').dropna().tolist()
+        
         if weights:
+            # 중량 내림차순 정렬
             sorted_weights = sorted(weights, reverse=True)
-            cutoff_index = max(0, int(len(weights) * 0.1) - 1)
+            # 상위 10% 개수 계산 (올림 처리하여 최소 1개 이상 보장)
+            # 예: 49개 -> 4.9 -> 5개
+            top_n = math.ceil(len(weights) * 0.1)
+            # 인덱스는 0부터 시작하므로 top_n - 1 적용 (최소값 0)
+            cutoff_index = max(0, top_n - 1)
             heavy_threshold = sorted_weights[cutoff_index]
         else:
-            heavy_threshold = 999999999
-    except:
-        heavy_threshold = 999999999
+            heavy_threshold = float('inf')
+
+    except Exception as e:
+        print(f"Threshold calculation error: {e}")
+        heavy_threshold = float('inf')
 
     for index, row in df.iterrows():
         try:
@@ -122,11 +131,15 @@ def load_data(df):
             h = float(row['높이'])
             l = float(row['길이'])
             weight = float(row['중량'])
+            
             box = Box(name, w, h, l, weight)
+            
+            # 상위 10% 중량에 해당하면 is_heavy=True
             if weight >= heavy_threshold and weight > 0:
                 box.is_heavy = True
             else:
                 box.is_heavy = False
+                
             items.append(box)
         except:
             continue
@@ -268,6 +281,7 @@ def draw_truck_3d(truck, camera_view="iso"):
 
     annotations = []
     for item in truck.items:
+        # 상위 10% Heavy 아이템은 빨간색, 그 외는 오렌지색
         color = '#FF0000' if getattr(item, 'is_heavy', False) else '#f39c12'
         x, y, z = item.x, item.y, item.z; w, h, d = item.w, item.h, item.d
         fig.add_trace(go.Mesh3d(x=[x,x+w,x+w,x, x,x+w,x+w,x], y=[y,y,y+d,y+d, y,y,y+d,y+d], z=[z,z,z,z, z+h,z+h,z+h,z+h], i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6], color=color, opacity=1.0, flatshading=True, name=item.name))
@@ -291,7 +305,7 @@ def draw_truck_3d(truck, camera_view="iso"):
     return fig
 
 # ==========================================
-# 5. 메인 UI (테이블 포맷팅 수정됨)
+# 5. 메인 UI (기존 유지)
 # ==========================================
 st.title("📦 Ultimate Load Planner (Cost Optimized)")
 st.caption("✅ 비용최적화(Lookahead) | 회전금지 | 1.3m 제한 | 80% 지지충족")
@@ -306,10 +320,8 @@ if uploaded_file:
         
         st.subheader(f"📋 데이터 확인 ({len(df)}건)")
         
-        # [수정됨] 디스플레이용 데이터프레임 생성 및 스타일 적용
         df_display = df.copy()
         
-        # 1. 컬럼명에 단위 추가
         rename_map = {
             '폭': '폭 (mm)', 
             '높이': '높이 (mm)', 
@@ -318,15 +330,11 @@ if uploaded_file:
         }
         df_display.rename(columns=rename_map, inplace=True)
         
-        # 2. 숫자 포맷팅 (천 단위 콤마)
-        # 실제 존재하는 컬럼만 필터링하여 포맷 적용
         cols_to_format = [c for c in ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)'] if c in df_display.columns]
         format_dict = {c: '{:,.0f}' for c in cols_to_format}
         
-        # 3. 가운데 정렬 및 스타일 적용
         styler = df_display.style.format(format_dict).set_properties(**{'text-align': 'center'})
         
-        # 4. 렌더링 (인덱스 숨김, 전체 스크롤)
         st.dataframe(styler, use_container_width=True, hide_index=True, height=400)
         
         if st.button("최적 배차 실행 (최소비용)", type="primary"):
