@@ -11,10 +11,11 @@ TRUCK_SPECS = {
 MAX_STACK_H = 1300  
 MAX_STACK_COUNT = 4 
 
-COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+# 기본 색상 리스트
+COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 
 def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
-    # 박스 입체 형상 (마우스 오버 시 정보 표시 설정)
+    # 박스 입체 형상
     fig.add_trace(go.Mesh3d(
         x=[x0, x0+l, x0+l, x0, x0, x0+l, x0+l, x0],
         y=[y0, y0, y0+w, y0+w, y0, y0, y0+w, y0+w],
@@ -42,10 +43,10 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
         line=dict(color='black', width=3), showlegend=False, hoverinfo='skip'
     ))
 
-    # [개선] 다방면 넘버링 (측면에서도 잘 보이도록 중앙과 끝점에 배치)
+    # 다방면 넘버링 (중앙 및 측면 강조)
     label_positions = [
-        (x0 + l/2, y0 + w/2, z0 + h/2), # 중앙
-        (x0 + 100, y0 + w/2, z0 + h/2)  # 입구쪽 측면 강조
+        (x0 + l/2, y0 + w/2, z0 + h/2),
+        (x0 + 100, y0 + w/2, z0 + h/2)
     ]
     
     for px, py, pz in label_positions:
@@ -75,6 +76,11 @@ def calculate_packing(box_df, fleet):
             })
         except: continue
     
+    # [추가 로직] 상위 10% 길이 판별
+    all_lengths = sorted([b['l'] for b in clean_boxes], reverse=True)
+    threshold_idx = max(0, int(len(all_lengths) * 0.1) - 1)
+    len_threshold = all_lengths[threshold_idx] if all_lengths else 0
+    
     pending = sorted(clean_boxes, key=lambda x: x['l'], reverse=True)
     results = []
     for idx, t_name in enumerate(fleet):
@@ -91,7 +97,13 @@ def calculate_packing(box_df, fleet):
                        stack_h + b['h'] <= MAX_STACK_H and \
                        truck_res['weight'] + b['weight'] <= spec['cap']:
                         b['pos'] = [curr_y, spec['w'] - rem_w, stack_h]
-                        b['color'] = random.choice(COLORS)
+                        
+                        # [색상 로직] 상위 10% 길이는 빨간색, 나머지는 랜덤
+                        if b['l'] >= len_threshold and len_threshold > 0:
+                            b['color'] = '#d62728' 
+                        else:
+                            b['color'] = random.choice(COLORS)
+                            
                         temp_stack.append(b); truck_res['weight'] += b['weight']
                         stack_h += b['h']; stack_count += 1; lane_w = max(lane_w, b['w'])
                         pending.pop(0)
