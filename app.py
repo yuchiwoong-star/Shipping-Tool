@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 from py3dbp import Packer, Bin, Item
 
 # ==========================================
-# 0. [핵심] 회전 금지 강제 패치 (안전한 버전)
+# 0. [핵심] 회전 금지 강제 패치 (오류 수정됨)
 # ==========================================
 # py3dbp 라이브러리가 박스를 돌리는 것을 원천 차단합니다.
 def no_rotation_put_item(self, item, pivot):
@@ -20,7 +20,7 @@ def no_rotation_put_item(self, item, pivot):
     if self.can_hold(item, pivot, dimension):
         fit = True
         self.items.append(item)
-        self.total_weight += item.weight
+        # [삭제] 에러를 유발하던 self.total_weight += item.weight 코드 삭제
 
     if not fit:
         item.position = valid_item_position
@@ -55,14 +55,17 @@ def create_items_from_df(df):
         # 문자열이 섞여있을 수 있으므로 숫자로 변환
         weights = pd.to_numeric(df['중량'], errors='coerce').dropna().tolist()
         if not weights:
-            return []
-            
-        sorted_weights = sorted(weights, reverse=True)
-        # 상위 10% 인덱스 계산
-        top10_idx = max(0, int(len(weights) * 0.1) - 1)
-        heavy_threshold = sorted_weights[top10_idx]
-    except Exception as e:
+            heavy_threshold = 999999
+        else:
+            sorted_weights = sorted(weights, reverse=True)
+            # 상위 10% 인덱스 계산
+            top10_idx = max(0, int(len(weights) * 0.1) - 1)
+            heavy_threshold = sorted_weights[top10_idx]
+    except Exception:
         heavy_threshold = 999999
+
+    # 컬럼명 공백 제거 (사용자 편의)
+    df.columns = [c.strip() for c in df.columns]
 
     for index, row in df.iterrows():
         try:
@@ -76,7 +79,6 @@ def create_items_from_df(df):
             
             # Item 생성 (이름, 가로, 높이, 세로, 무게)
             # 엑셀의 '폭' -> Width, '높이' -> Height, '길이' -> Depth
-            # 위에서 패치한 no_rotation_put_item 덕분에 이 방향이 고정됩니다.
             item = Item(name, w, h, l, weight)
             
             # 시각화용 속성
@@ -118,7 +120,7 @@ def get_optimized_trucks(items):
             packed_count = len(temp_bin.items)
             
             if packed_count > 0:
-                # 점수 로직:
+                # 점수 로직
                 # 1. 짐을 다 실을 수 있다면 -> 가장 작은 트럭이 최고 (비용 절감)
                 if packed_count == len(remaining_items):
                     score = 100000 - spec['weight'] 
@@ -126,9 +128,7 @@ def get_optimized_trucks(items):
                     # 2. 다 못 싣는다면 -> 꽉 채우는(효율 좋은) 트럭 선호
                     util_weight = temp_bin.get_total_weight() / spec['weight']
                     vol_denom = (spec['w'] * CALC_HEIGHT * spec['l'])
-                    # 0으로 나누기 방지
                     if vol_denom == 0: vol_denom = 1
-                    
                     util_vol = sum([i.width * i.height * i.depth for i in temp_bin.items]) / vol_denom
                     score = (util_weight + util_vol) * 100
                 
@@ -162,14 +162,12 @@ def create_3d_figure(bin_obj):
     # 벽면 (반투명 파랑/회색)
     wall_color = 'lightblue'
     wall_opacity = 0.1
-    # 좌/우/앞 벽면 좌표 구성
-    # 좌(x=0), 우(x=W), 앞(y=L) *주의: y축이 길이 방향
     
-    # 좌측벽
+    # 좌측벽 (x=0)
     fig.add_trace(go.Mesh3d(x=[0,0,0,0], y=[0,L,L,0], z=[0,0,Real_H,Real_H], color=wall_color, opacity=wall_opacity, showlegend=False))
-    # 우측벽
+    # 우측벽 (x=W)
     fig.add_trace(go.Mesh3d(x=[W,W,W,W], y=[0,L,L,0], z=[0,0,Real_H,Real_H], color=wall_color, opacity=wall_opacity, showlegend=False))
-    # 앞쪽벽 (운전석쪽, y=L)
+    # 앞쪽벽 (y=L)
     fig.add_trace(go.Mesh3d(x=[0,W,W,0], y=[L,L,L,L], z=[0,0,Real_H,Real_H], color=wall_color, opacity=wall_opacity, showlegend=False))
 
     # 프레임 선 (진한 회색)
@@ -232,10 +230,10 @@ st.caption("✅ 회전 금지(원본 방향 유지) | 1.3m 높이 제한 | 상�
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
 
 if uploaded_file:
-    # 파일 읽기
+    # 파일 읽기 (CSV 한글 깨짐 방지 등 강건성 추가)
     try:
         if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
+            df = pd.read_csv(uploaded_file, encoding='cp949') # 한글 CSV 대비
         else:
             df = pd.read_excel(uploaded_file)
             
@@ -244,7 +242,9 @@ if uploaded_file:
 
         if st.button("최적 배차 실행", type="primary"):
             items = create_items_from_df(df)
-            if items:
+            if not items:
+                st.error("데이터를 변환할 수 없습니다. 컬럼명(박스번호, 폭, 높이, 길이, 중량)을 확인해주세요.")
+            else:
                 with st.spinner("최적의 차량을 계산 중입니다..."):
                     try:
                         trucks = get_optimized_trucks(items)
@@ -275,7 +275,5 @@ if uploaded_file:
                             st.warning("적재할 수 있는 차량을 찾지 못했습니다. (규격 초과 등)")
                     except Exception as e:
                         st.error(f"계산 중 상세 오류 발생: {e}")
-            else:
-                st.error("데이터를 처리할 수 없습니다. 컬럼명(박스번호, 폭, 높이, 길이, 중량)을 확인해주세요.")
     except Exception as e:
-        st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
+        st.error(f"파일 읽기 오류: {e}")
