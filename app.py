@@ -300,8 +300,7 @@ def draw_truck_3d(truck, camera_view="iso"):
 # 5. 메인 UI
 # ==========================================
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
-# [수정 2] 캡션 텍스트 변경
-st.caption("✅ 규칙 : 비용최적화 | 회전금지 | 1.3m 제한 | 80% 지지충족 | 상위 10% 중량박스 빨간색 표시")
+st.caption("✅ 규칙 : 비용최적화 | 부피순 적재 | 회전금지 | 1.3m 제한 | 80% 지지충족 | 하중제한 준수 | 상위 10% 중량박스 빨간색 표시")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
@@ -329,7 +328,7 @@ if uploaded_file:
         # 숫자 포맷팅만 먼저 적용
         styler = df_display.style.format(format_dict)
         
-        # [수정 1] column_config를 사용하여 강제 가운데 정렬 적용
+        # [핵심 수정] column_config를 사용하여 강제로 "center" 정렬 주입
         st.dataframe(
             styler, 
             use_container_width=True, 
@@ -361,7 +360,7 @@ if uploaded_file:
         }
         st_truck = df_truck.style.format(format_dict_truck)
 
-        # [수정 1] 차량 정보 테이블에도 동일한 column_config 적용
+        # [핵심 수정] 차량 정보 테이블에도 동일한 column_config 적용
         st.dataframe(
             st_truck, 
             use_container_width=True, 
