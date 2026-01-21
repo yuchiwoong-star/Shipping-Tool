@@ -217,7 +217,7 @@ def draw_truck_3d(truck, camera_view="iso"):
     W, L, Real_H = spec['w'], spec['l'], spec['real_h']
     LIMIT_H = 1300
     
-    # [스타일 정의] - 참고 이미지와 유사한 색감
+    # [스타일 정의]
     COLOR_BG = 'white'
     COLOR_CHASSIS_SIDE = '#D0D0D0'  # 트럭 하단 옆면
     COLOR_CHASSIS_TOP = '#E0E0E0'   # 트럭 바닥
@@ -227,6 +227,9 @@ def draw_truck_3d(truck, camera_view="iso"):
     COLOR_BOX_LINE = '#000000'      # 박스 외곽선 (진한 검정)
     COLOR_TIRE = '#333333'
     COLOR_HUB = '#AAAAAA'
+
+    # 일러스트 느낌을 위한 조명 설정 (각 trace에 적용)
+    LIGHTING_EFFECT = dict(ambient=0.9, diffuse=0.5, specular=0.1, roughness=0.5)
 
     # --- 도우미 함수: 육면체 그리기 (Mesh + Line) ---
     def draw_cube(x, y, z, w, l, h, face_color, line_color=None, opacity=1.0, show_edges=True):
@@ -238,7 +241,8 @@ def draw_truck_3d(truck, camera_view="iso"):
             i=[7, 0, 0, 0, 4, 4, 6, 6, 4, 0, 3, 2],
             j=[3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3],
             k=[0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6],
-            color=face_color, opacity=opacity, flatshading=True, hoverinfo='skip'
+            color=face_color, opacity=opacity, flatshading=True, 
+            lighting=LIGHTING_EFFECT, hoverinfo='skip'
         ))
         # 2. 테두리 그리기 (만화적 느낌)
         if show_edges and line_color:
@@ -254,7 +258,6 @@ def draw_truck_3d(truck, camera_view="iso"):
     
     # 2. [트럭 벽면] 투명 유리 느낌
     # 옆면, 윗면, 앞면을 하나의 투명한 박스로 표현 (내용물이 보이도록)
-    # 외곽선은 진하게 그려서 형태 유지
     draw_cube(0, 0, 0, W, L, Real_H, '#EEF5FF', COLOR_FRAME_OUTLINE, opacity=0.15, show_edges=True)
 
     # 3. [바퀴] 단순한 원형 (Cylinder Mesh)
@@ -268,9 +271,10 @@ def draw_truck_3d(truck, camera_view="iso"):
             y.extend([cy+r*np.cos(t), cy+r*np.cos(t)])
             z.extend([cz+r*np.sin(t), cz+r*np.sin(t)])
         
-        # Mesh3d로 휠 그리기 (간략화된 덩어리)
+        # Mesh3d로 휠 그리기
         fig.add_trace(go.Mesh3d(
-            x=x, y=y, z=z, alphahull=0, color=COLOR_TIRE, flatshading=True, hoverinfo='skip'
+            x=x, y=y, z=z, alphahull=0, color=COLOR_TIRE, flatshading=True, 
+            lighting=LIGHTING_EFFECT, hoverinfo='skip'
         ))
         # 휠 캡 (허브)
         fig.add_trace(go.Scatter3d(x=[cx+w/2+10], y=[cy], z=[cz], mode='markers', marker=dict(color=COLOR_HUB, size=5), showlegend=False, hoverinfo='skip'))
@@ -321,7 +325,7 @@ def draw_truck_3d(truck, camera_view="iso"):
             font=dict(color="black", size=10), bgcolor="rgba(255,255,255,0.4)"
         ))
 
-    # 6. [카메라 & 조명] 일러스트 느낌을 위한 조명 설정
+    # 6. [카메라]
     if camera_view == "top": eye = dict(x=0, y=0.01, z=2.2); up = dict(x=0, y=1, z=0)
     elif camera_view == "side": eye = dict(x=2.2, y=0, z=0.2); up = dict(x=0, y=0, z=1)
     else: eye = dict(x=1.5, y=-1.5, z=0.8); up = dict(x=0, y=0, z=1) # ISO
@@ -330,9 +334,7 @@ def draw_truck_3d(truck, camera_view="iso"):
         scene=dict(
             aspectmode='data',
             xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False),
-            bgcolor='white', camera=dict(eye=eye, up=up), annotations=annotations,
-            # 조명을 부드럽게 설정하여 그림자 최소화 (일러스트 느낌)
-            lighting=dict(ambient=0.8, diffuse=0.5, specular=0.1, roughness=0.5)
+            bgcolor='white', camera=dict(eye=eye, up=up), annotations=annotations
         ),
         margin=dict(l=0, r=0, b=0, t=0), height=600, uirevision=str(uuid.uuid4())
     )
@@ -356,6 +358,7 @@ if uploaded_file:
         
         df_display = df.copy()
         
+        # 숫자 -> 문자열 변환 (왼쪽 정렬 유도)
         cols_to_format = [c for c in ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)'] if c in df_display.columns]
         for col in cols_to_format:
             df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}")
