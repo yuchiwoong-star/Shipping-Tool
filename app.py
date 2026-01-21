@@ -208,7 +208,7 @@ def run_optimization(all_items):
     return final_trucks
 
 # ==========================================
-# 4. 시각화 (바퀴 디자인 개선 및 배치 수정)
+# 4. 시각화 (바퀴 디자인 개선 및 프레임 강화)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -255,11 +255,19 @@ def draw_truck_3d(truck, camera_view="iso"):
     # 2. [트럭 벽면]
     draw_cube(0, 0, 0, W, L, Real_H, '#EEF5FF', COLOR_FRAME_OUTLINE, opacity=0.15, show_edges=True)
 
-    # 2-1. [후면 프레임 및 범퍼]
+    # 2-1. [하단 프레임 및 범퍼 디테일 강화]
     frame_thickness = 60; bumper_h = 100
+    
+    # 하단 측면 프레임 (사이드 스커트 느낌)
+    draw_cube(-frame_thickness/2, 0, -chassis_h - frame_thickness, frame_thickness, L, frame_thickness, COLOR_FRAME_OUTLINE, COLOR_FRAME_OUTLINE)
+    draw_cube(W-frame_thickness/2, 0, -chassis_h - frame_thickness, frame_thickness, L, frame_thickness, COLOR_FRAME_OUTLINE, COLOR_FRAME_OUTLINE)
+
+    # 후면(입구) 프레임
     draw_cube(-frame_thickness/2, L-frame_thickness, -chassis_h, frame_thickness, frame_thickness, Real_H + chassis_h + 20, COLOR_FRAME_OUTLINE, COLOR_FRAME_OUTLINE)
     draw_cube(W-frame_thickness/2, L-frame_thickness, -chassis_h, frame_thickness, frame_thickness, Real_H + chassis_h + 20, COLOR_FRAME_OUTLINE, COLOR_FRAME_OUTLINE)
     draw_cube(-frame_thickness/2, L-frame_thickness, Real_H, W+frame_thickness, frame_thickness, frame_thickness, COLOR_FRAME_OUTLINE, COLOR_FRAME_OUTLINE)
+    
+    # 후면 하단 범퍼
     draw_cube(-frame_thickness/2, L, -chassis_h - bumper_h, W+frame_thickness, frame_thickness, bumper_h, COLOR_FRAME_OUTLINE, COLOR_FRAME_OUTLINE)
     tail_w = 120; tail_h = 50
     draw_cube(100, L + frame_thickness, -chassis_h - bumper_h + (bumper_h-tail_h)/2, tail_w, 20, tail_h, '#FF0000', '#990000')
