@@ -1,9 +1,8 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import random
 
-# 1. 차량 제원 및 제약 조건
+# 1. 차량 제원 및 제약 조건 설정
 TRUCK_SPECS = {
     "11톤": {"w": 2350, "l": 9000, "h": 2300, "cap": 13000},
     "5톤": {"w": 2350, "l": 6200, "h": 2100, "cap": 7000}
@@ -11,11 +10,8 @@ TRUCK_SPECS = {
 MAX_STACK_H = 1300  
 MAX_STACK_COUNT = 4 
 
-# 기본 색상 리스트
-COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
-
 def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
-    # 박스 입체 형상
+    # 박스 본체 (불투명도 0.8로 가독성 확보)
     fig.add_trace(go.Mesh3d(
         x=[x0, x0+l, x0+l, x0, x0, x0+l, x0+l, x0],
         y=[y0, y0, y0+w, y0+w, y0, y0, y0+w, y0+w],
@@ -23,9 +19,9 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
         i=[7, 0, 0, 0, 4, 4, 6, 6, 4, 0, 3, 2],
         j=[3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3],
         k=[0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6],
-        opacity=0.75, color=color, name=f"Box {name}",
+        opacity=0.8, color=color, name=f"Box {name}",
         hoverinfo="text",
-        text=f"📦 박스번호: {name}<br>📏 규격: {int(l)}x{int(w)}x{int(h)}<br>📍 위치(Z): {int(z0)}mm",
+        text=f"📦 박스번호: {name}<br>📏 규격: {int(l)}x{int(w)}x{int(h)}<br>📍 위치(높이): {int(z0)}mm",
         showlegend=False
     ))
     
@@ -43,19 +39,17 @@ def add_box_3d(fig, x0, y0, z0, l, w, h, name, color):
         line=dict(color='black', width=3), showlegend=False, hoverinfo='skip'
     ))
 
-    # 다방면 넘버링 (중앙 및 측면 강조)
-    label_positions = [
-        (x0 + l/2, y0 + w/2, z0 + h/2),
-        (x0 + 100, y0 + w/2, z0 + h/2)
-    ]
-    
-    for px, py, pz in label_positions:
-        fig.add_trace(go.Scatter3d(
-            x=[px], y=[py], z=[pz],
-            mode='text', text=[name],
-            textfont=dict(size=15, color="black", family="Arial Black"),
-            showlegend=False, hoverinfo='skip'
-        ))
+    # [수정] 박스 번호를 길이축 시작(L=0 지점) 단면에만 표시
+    fig.add_trace(go.Scatter3d(
+        x=[x0 + 5],  # 박스 시작 단면에 밀착
+        y=[y0 + w/2],
+        z=[z0 + h/2],
+        mode='text',
+        text=[name],
+        textfont=dict(size=14, color="black", family="Arial Black"),
+        showlegend=False,
+        hoverinfo='skip'
+    ))
 
 def calculate_packing(box_df, fleet):
     cols = [str(c).lower().strip() for c in box_df.columns]
@@ -76,10 +70,10 @@ def calculate_packing(box_df, fleet):
             })
         except: continue
     
-    # [추가 로직] 상위 10% 길이 판별
+    # [수정] 상위 10% 길이 기준 계산
     all_lengths = sorted([b['l'] for b in clean_boxes], reverse=True)
     threshold_idx = max(0, int(len(all_lengths) * 0.1) - 1)
-    len_threshold = all_lengths[threshold_idx] if all_lengths else 0
+    length_threshold = all_lengths[threshold_idx] if all_lengths else 0
     
     pending = sorted(clean_boxes, key=lambda x: x['l'], reverse=True)
     results = []
@@ -97,13 +91,8 @@ def calculate_packing(box_df, fleet):
                        stack_h + b['h'] <= MAX_STACK_H and \
                        truck_res['weight'] + b['weight'] <= spec['cap']:
                         b['pos'] = [curr_y, spec['w'] - rem_w, stack_h]
-                        
-                        # [색상 로직] 상위 10% 길이는 빨간색, 나머지는 랜덤
-                        if b['l'] >= len_threshold and len_threshold > 0:
-                            b['color'] = '#d62728' 
-                        else:
-                            b['color'] = random.choice(COLORS)
-                            
+                        # 상위 10%만 빨간색, 나머지는 연주황색 고정
+                        b['color'] = '#d62728' if b['l'] >= length_threshold else '#ffbb78'
                         temp_stack.append(b); truck_res['weight'] += b['weight']
                         stack_h += b['h']; stack_count += 1; lane_w = max(lane_w, b['w'])
                         pending.pop(0)
@@ -129,20 +118,27 @@ if uploaded_file:
             st.subheader(f"🚚 {truck['name']} ({truck['weight']:.1f}kg 적재)")
             fig = go.Figure()
             spec = TRUCK_SPECS[truck['name']]
-            add_box_3d(fig, 0, 0, 0, spec['l'], spec['w'], 20, "Floor", "lightgray")
+            
+            # 가이드라인 (트럭 틀)
+            fig.add_trace(go.Scatter3d(
+                x=[0, spec['l'], spec['l'], 0, 0, 0, spec['l'], spec['l'], 0, 0, spec['l'], spec['l']],
+                y=[0, 0, spec['w'], spec['w'], 0, 0, 0, spec['w'], spec['w'], 0, 0, spec['w']],
+                z=[0, 0, 0, 0, 0, spec['h'], spec['h'], spec['h'], spec['h'], spec['h'], 0, spec['h']],
+                mode='lines', line=dict(color='gray', width=1), showlegend=False, hoverinfo='skip'
+            ))
+            
             for b in truck['boxes']:
                 add_box_3d(fig, b['pos'][0], b['pos'][1], b['pos'][2], b['l'], b['w'], b['h'], b['id'], b['color'])
             
             fig.update_layout(
                 scene=dict(
-                    xaxis=dict(title='길이 (L)', range=[0, 9000], showgrid=True),
-                    yaxis=dict(title='폭 (W)', range=[0, 2350], showgrid=True),
-                    zaxis=dict(title='높이 (H)', range=[0, 2300], showgrid=True),
+                    xaxis=dict(title='길이 (L)', range=[0, 9000]),
+                    yaxis=dict(title='폭 (W)', range=[0, 2350]),
+                    zaxis=dict(title='높이 (H)', range=[0, 2300]),
                     aspectmode='manual',
-                    aspectratio=dict(x=3, y=1, z=1)
+                    aspectratio=dict(x=3, y=1, z=1),
+                    camera=dict(eye=dict(x=1.8, y=1.8, z=1.5))
                 ),
-                margin=dict(l=0, r=0, b=0, t=50),
-                height=800,
-                hoverlabel=dict(bgcolor="white", font_size=16, font_family="Malgun Gothic")
+                margin=dict(l=0, r=0, b=0, t=50), height=800
             )
             st.plotly_chart(fig, key=f"chart_{truck['id']}")
