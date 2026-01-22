@@ -19,7 +19,7 @@ class Box:
         self.y = 0.0
         self.z = 0.0
         self.is_heavy = False
-        self.level = 1 # [추가] 박스 적재 단수 (기본 1단)
+        self.level = 1 # 박스 적재 단수 (기본 1단)
     
     @property
     def volume(self):
@@ -60,7 +60,7 @@ class Truck:
             if not self._check_support(item, px, py, pz):
                 continue
             
-            # 4. [추가] 적재 단수(Level) 체크 (최대 4단)
+            # 4. 적재 단수(Level) 체크 (최대 4단)
             level = 1
             if pz > 0.001: # 바닥이 아닌 경우 아래 박스 확인
                 max_below_level = 0
@@ -183,7 +183,7 @@ def run_optimization(all_items):
                 spec = TRUCK_DB[t_name]
                 # [적용] 실제 제원보다 MARGIN_LENGTH 작은 공간으로 계산
                 effective_l = spec['l'] - MARGIN_LENGTH
-                # 높이 제한 1300mm 적용
+                # 높이 제한 1300mm 적용 (Truck 생성자에서 h=1300)
                 t = Truck(t_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
                 
                 # [적용] 길이(d) 기준 정렬 (긴 박스 우선)
@@ -394,7 +394,7 @@ def draw_truck_3d(truck, camera_view="iso"):
             z=[item.z, item.z, item.z, item.z, item.z+item.h, item.z+item.h, item.z+item.h, item.z+item.h],
             i=[7, 0, 0, 0, 4, 4, 6, 6, 4, 0, 3, 2], j=[3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3], k=[0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6],
             opacity=0.0, hoverinfo='text',
-            hovertext=f"<b>📦 {item.name}</b><br>규격: {int(item.w)}x{int(item.d)}x{int(item.h)}<br>중량: {int(item.weight):,}kg"
+            hovertext=f"<b>📦 {item.name}</b><br>규격: {int(item.w)}x{int(item.d)}x{int(item.h)}<br>중량: {int(item.weight):,}kg<br>적재단수: {item.level}단"
         ))
         annotations.append(dict(
             x=item.x + item.w/2, y=item.y + item.d/2, z=item.z + item.h/2,
@@ -421,7 +421,8 @@ def draw_truck_3d(truck, camera_view="iso"):
 # 5. 메인 UI
 # ==========================================
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
-st.caption("✅ 규칙 : 비용최소화 | 부피순 적재 | 회전금지 | 1.3m 높이제한 | 80% 지지충족 | 하중제한 준수 | 상위 10% 중량박스 빨간색 표시 | 길이 10cm 여유")
+# [수정] 규칙 텍스트 변경
+st.caption("✅ 규칙 : 비용최소화 | 부피순 적재 | 회전금지 | 1.3m 높이제한 | 80% 지지충족 | 하중제한 준수 | 상위 10% 중량박스 빨간색 표시 | 길이 10cm 여유 | 최대 4단적재")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
