@@ -45,6 +45,7 @@ class Truck:
         if self.total_weight + item.weight > self.max_weight:
             return False
         
+        # 피벗 정렬: Z(낮은순) -> Y(안쪽순) -> X(왼쪽순)
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
         
         for p in self.pivots:
@@ -87,7 +88,7 @@ class Truck:
         
         if fit:
             self.pivots.append([item.x + item.w, item.y, item.z])
-            # [규칙 적용] 길이 방향 피벗 생성 시 간격 추가
+            # [수정] 길이 방향(y)으로 다음에 박스를 놓을 때는 BOX_GAP_L(300mm) 만큼 띄워서 피벗 생성
             self.pivots.append([item.x, item.y + item.d + BOX_GAP_L, item.z])
             self.pivots.append([item.x, item.y, item.z + item.h])
         return fit
@@ -130,8 +131,7 @@ TRUCK_DB = {
 def load_data(df):
     items = []
     try:
-        # 컬럼명 정규화
-        df.columns = [str(c).strip() for c in df.columns]
+        cols = {c: c for c in df.columns}
         
         weight_col = next((c for c in df.columns if '중량' in c), None)
         if weight_col:
@@ -151,16 +151,13 @@ def load_data(df):
         h_col = next((c for c in df.columns if '높이' in c), None)
         l_col = next((c for c in df.columns if '길이' in c), None)
 
-        if not (w_col and h_col and l_col):
-            return []
-
         for index, row in df.iterrows():
             try:
                 name = str(row[name_col]) if name_col else f"Box-{index}"
                 w = float(row[w_col])
                 h = float(row[h_col])
                 l = float(row[l_col])
-                weight = float(row[weight_col]) if weight_col else 0.0
+                weight = float(row[weight_col])
                 
                 box = Box(name, w, h, l, weight)
                 if weight >= heavy_threshold and weight > 0:
@@ -170,13 +167,12 @@ def load_data(df):
                 items.append(box)
             except:
                 continue
-    except Exception as e:
-        st.error(f"데이터 처리 중 오류: {e}")
+    except:
         pass
     return items
 
 def run_optimization(all_items):
-    # [설정] 차량 길이 여유 20cm (200mm)
+    # [수정] 차량 길이 여유 20cm (200mm)
     MARGIN_LENGTH = 200 
 
     def solve_remaining_greedy(current_items):
@@ -187,8 +183,6 @@ def run_optimization(all_items):
             for t_name in TRUCK_DB:
                 spec = TRUCK_DB[t_name]
                 effective_l = spec['l'] - MARGIN_LENGTH
-                if effective_l <= 0: continue
-
                 t = Truck(t_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
                 
                 test_i = sorted(rem, key=lambda x: x.d, reverse=True)
@@ -223,8 +217,6 @@ def run_optimization(all_items):
     for start_truck_name in TRUCK_DB:
         spec = TRUCK_DB[start_truck_name]
         effective_l = spec['l'] - MARGIN_LENGTH
-        if effective_l <= 0: continue
-
         start_truck = Truck(start_truck_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
         
         items_sorted = sorted(all_items, key=lambda x: x.d, reverse=True)
@@ -432,155 +424,136 @@ if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
 if uploaded_file:
     try:
-        # [수정] 파일 로딩 로직 강화 (seek(0) 및 에러 처리 강화)
-        df = None
-        if uploaded_file.name.lower().endswith('.csv'):
-            # CSV: cp949(한글 엑셀 기본) -> utf-8 -> euc-kr 순 시도
-            encodings = ['cp949', 'utf-8', 'euc-kr', 'latin1']
-            for enc in encodings:
-                try:
-                    uploaded_file.seek(0)
-                    df = pd.read_csv(uploaded_file, encoding=enc)
-                    break
-                except Exception:
-                    continue
-        else:
-            # Excel: openpyxl 등 엔진 시도
-            try:
-                uploaded_file.seek(0)
-                df = pd.read_excel(uploaded_file)
-            except Exception as e:
-                pass
+        if uploaded_file.name.endswith('.csv'): df = pd.read_csv(uploaded_file, encoding='cp949')
+        else: df = pd.read_excel(uploaded_file)
+        df.columns = [c.strip() for c in df.columns]
+        
+        st.subheader(f"📋 데이터 확인 ({len(df)}건)")
+        
+        df_display = df.copy()
+        
+        rename_map = {}
+        for c in df_display.columns:
+            if '박스' in c or '번호' in c: rename_map[c] = '박스번호'
+            elif '폭' in c: rename_map[c] = '폭 (mm)'
+            elif '높이' in c: rename_map[c] = '높이 (mm)'
+            elif '길이' in c: rename_map[c] = '길이 (mm)'
+            elif '중량' in c: rename_map[c] = '중량 (kg)'
+        
+        df_display = df_display.rename(columns=rename_map)
+        
+        cols_to_format = ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)']
+        for col in cols_to_format:
+            if col in df_display.columns:
+                df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "")
+        
+        if '박스번호' in df_display.columns:
+            df_display['박스번호'] = df_display['박스번호'].astype(str)
 
-        if df is None:
-            st.error("파일을 읽을 수 없습니다. (지원되지 않는 형식이거나 인코딩 오류)")
-        else:
-            df.columns = [str(c).strip() for c in df.columns]
-            
-            st.subheader(f"📋 데이터 확인 ({len(df)}건)")
-            
-            df_display = df.copy()
-            
-            rename_map = {}
-            for c in df_display.columns:
-                if '박스' in c or '번호' in c: rename_map[c] = '박스번호'
-                elif '폭' in c: rename_map[c] = '폭 (mm)'
-                elif '높이' in c: rename_map[c] = '높이 (mm)'
-                elif '길이' in c: rename_map[c] = '길이 (mm)'
-                elif '중량' in c: rename_map[c] = '중량 (kg)'
-            
-            df_display = df_display.rename(columns=rename_map)
-            
-            cols_to_format = ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)']
-            for col in cols_to_format:
-                if col in df_display.columns:
-                    df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) and isinstance(x, (int, float)) else "")
-            
-            if '박스번호' in df_display.columns:
-                df_display['박스번호'] = df_display['박스번호'].astype(str)
+        styler = df_display.style.set_properties(**{'text-align': 'center'})
+        styler.set_table_styles([
+            {'selector': 'th', 'props': [('text-align', 'center')]},
+            {'selector': 'td', 'props': [('text-align', 'center')]}
+        ])
+        
+        st.dataframe(
+            styler, 
+            use_container_width=True, 
+            hide_index=True, 
+            height=250,
+            column_config={
+                c: st.column_config.Column(width="medium") for c in df_display.columns
+            }
+        )
 
-            styler = df_display.style.set_properties(**{'text-align': 'center'})
-            styler.set_table_styles([
-                {'selector': 'th', 'props': [('text-align', 'center')]},
-                {'selector': 'td', 'props': [('text-align', 'center')]}
-            ])
+        st.subheader("🚛 차량 기준 정보")
+        
+        truck_rows = []
+        for name, spec in TRUCK_DB.items():
+            truck_rows.append({
+                "차량": name,
+                "적재폭 (mm)": spec['w'],
+                "적재길이 (mm)": spec['l'],
+                "허용하중 (kg)": spec['weight'],
+                "운송단가 (원)": spec['cost'] 
+            })
+        df_truck = pd.DataFrame(truck_rows)
+        
+        format_cols_truck = ['적재폭 (mm)', '적재길이 (mm)', '허용하중 (kg)', '운송단가 (원)']
+        for col in format_cols_truck:
+             df_truck[col] = df_truck[col].apply(lambda x: f"{x:,.0f}")
+        
+        st_truck = df_truck.style.set_properties(**{'text-align': 'center'})
+        st_truck.set_table_styles([
+            {'selector': 'th', 'props': [('text-align', 'center')]},
+            {'selector': 'td', 'props': [('text-align', 'center')]}
+        ])
+
+        st.dataframe(
+            st_truck, 
+            use_container_width=True, 
+            hide_index=True,
+            column_config={
+                c: st.column_config.Column(width="medium") for c in df_truck.columns
+            }
+        )
+
+        if st.button("최적 배차 실행 (최소비용)", type="primary"):
+            st.session_state['run_result'] = load_data(df)
             
-            st.dataframe(
-                styler, 
-                use_container_width=True, 
-                hide_index=True, 
-                height=250,
-                column_config={
-                    c: st.column_config.Column(width="medium") for c in df_display.columns
-                }
-            )
+        if 'run_result' in st.session_state:
+            items = st.session_state['run_result']
+            if not items: st.error("데이터 변환 실패.")
+            else:
+                trucks = run_optimization(items)
+                if trucks:
+                    t_names = [t.name.split(' ')[0] for t in trucks]
+                    from collections import Counter
+                    cnt = Counter(t_names)
+                    total_cost = sum(t.cost for t in trucks)
 
-            st.subheader("🚛 차량 기준 정보")
-            
-            truck_rows = []
-            for name, spec in TRUCK_DB.items():
-                truck_rows.append({
-                    "차량": name,
-                    "적재폭 (mm)": spec['w'],
-                    "적재길이 (mm)": spec['l'],
-                    "허용하중 (kg)": spec['weight'],
-                    "운송단가 (원)": spec['cost'] 
-                })
-            df_truck = pd.DataFrame(truck_rows)
-            
-            format_cols_truck = ['적재폭 (mm)', '적재길이 (mm)', '허용하중 (kg)', '운송단가 (원)']
-            for col in format_cols_truck:
-                 df_truck[col] = df_truck[col].apply(lambda x: f"{x:,.0f}")
-            
-            st_truck = df_truck.style.set_properties(**{'text-align': 'center'})
-            st_truck.set_table_styles([
-                {'selector': 'th', 'props': [('text-align', 'center')]},
-                {'selector': 'td', 'props': [('text-align', 'center')]}
-            ])
+                    # 1. Summary Metrics
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("총 배차 차량", f"{len(trucks)}대")
+                    m2.metric("총 예상 운송비", f"{total_cost:,}원")
+                    m3.metric("총 적재 중량", f"{sum(t.total_weight for t in trucks):,.0f} kg")
+                    
+                    st.divider()
 
-            st.dataframe(
-                st_truck, 
-                use_container_width=True, 
-                hide_index=True,
-                column_config={
-                    c: st.column_config.Column(width="medium") for c in df_truck.columns
-                }
-            )
+                    # 2. View Controls & Tabs
+                    c_view, c_tabs = st.columns([1, 4])
+                    
+                    with c_view:
+                        st.markdown("##### 👁️ 뷰 모드 설정")
+                        view_mode = st.radio("시각화 모드", ["쿼터뷰(Iso)", "탑뷰(Top)", "사이드뷰(Side)"], label_visibility="collapsed")
+                        if "Iso" in view_mode: st.session_state['view_mode'] = 'iso'
+                        elif "Top" in view_mode: st.session_state['view_mode'] = 'top'
+                        else: st.session_state['view_mode'] = 'side'
 
-            if st.button("최적 배차 실행 (최소비용)", type="primary"):
-                st.session_state['run_result'] = load_data(df)
-                
-            if 'run_result' in st.session_state:
-                items = st.session_state['run_result']
-                if not items: st.error("적재할 박스 데이터가 없거나 변환에 실패했습니다.")
-                else:
-                    trucks = run_optimization(items)
-                    if trucks:
-                        t_names = [t.name.split(' ')[0] for t in trucks]
-                        from collections import Counter
-                        cnt = Counter(t_names)
-                        total_cost = sum(t.cost for t in trucks)
-
-                        m1, m2, m3 = st.columns(3)
-                        m1.metric("총 배차 차량", f"{len(trucks)}대")
-                        m2.metric("총 예상 운송비", f"{total_cost:,}원")
-                        m3.metric("총 적재 중량", f"{sum(t.total_weight for t in trucks):,.0f} kg")
-                        
-                        st.divider()
-
-                        c_view, c_tabs = st.columns([1, 4])
-                        
-                        with c_view:
-                            st.markdown("##### 👁️ 뷰 모드 설정")
-                            view_mode = st.radio("시각화 모드", ["쿼터뷰(Iso)", "탑뷰(Top)", "사이드뷰(Side)"], label_visibility="collapsed")
-                            if "Iso" in view_mode: st.session_state['view_mode'] = 'iso'
-                            elif "Top" in view_mode: st.session_state['view_mode'] = 'top'
-                            else: st.session_state['view_mode'] = 'side'
-
-                        with c_tabs:
-                            tabs = st.tabs([f"{t.name}" for t in trucks])
-                            for i, tab in enumerate(tabs):
-                                with tab:
-                                    t = trucks[i]
-                                    c_info, c_chart = st.columns([1, 3])
+                    with c_tabs:
+                        tabs = st.tabs([f"{t.name}" for t in trucks])
+                        for i, tab in enumerate(tabs):
+                            with tab:
+                                t = trucks[i]
+                                c_info, c_chart = st.columns([1, 3])
+                                
+                                with c_info:
+                                    st.markdown(f"#### {t.name}")
                                     
-                                    with c_info:
-                                        st.markdown(f"#### {t.name}")
-                                        
-                                        weight_pct = min(1.0, t.total_weight / t.max_weight)
-                                        st.progress(weight_pct, text=f"중량 적재율: {weight_pct*100:.1f}%")
-                                        
-                                        st.dataframe(pd.DataFrame({
-                                            "항목": ["박스 수", "적재 중량", "운송 비용"],
-                                            "값": [f"{len(t.items)}개", f"{t.total_weight:,.0f} kg", f"{t.cost:,} 원"]
-                                        }), hide_index=True, use_container_width=True)
-                                        
-                                        with st.expander("📦 적재 리스트 확인"):
-                                            box_data = [{"박스명": b.name, "단수": f"{b.level}단"} for b in t.items]
-                                            st.dataframe(box_data, hide_index=True)
+                                    weight_pct = min(1.0, t.total_weight / t.max_weight)
+                                    st.progress(weight_pct, text=f"중량 적재율: {weight_pct*100:.1f}%")
+                                    
+                                    st.dataframe(pd.DataFrame({
+                                        "항목": ["박스 수", "적재 중량", "운송 비용"],
+                                        "값": [f"{len(t.items)}개", f"{t.total_weight:,.0f} kg", f"{t.cost:,} 원"]
+                                    }), hide_index=True, use_container_width=True)
+                                    
+                                    with st.expander("📦 적재 리스트 확인"):
+                                        box_data = [{"박스명": b.name, "단수": f"{b.level}단"} for b in t.items]
+                                        st.dataframe(box_data, hide_index=True)
 
-                                    with c_chart:
-                                        st.plotly_chart(draw_truck_3d(t, st.session_state['view_mode']), use_container_width=True)
+                                with c_chart:
+                                    st.plotly_chart(draw_truck_3d(t, st.session_state['view_mode']), use_container_width=True)
 
-                    else: st.warning("적재 가능한 차량을 찾지 못했습니다. (박스 크기가 차량보다 크거나 하중 초과)")
+                else: st.warning("적재 가능한 차량을 찾지 못했습니다.")
     except Exception as e: st.error(f"오류 발생: {e}")
