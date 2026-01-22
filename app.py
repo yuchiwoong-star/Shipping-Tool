@@ -409,7 +409,7 @@ def draw_truck_3d(truck, camera_view="iso"):
 # 5. 메인 UI
 # ==========================================
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
-st.caption("✅ 규칙 : 비용최소화 | 부피순 적재 | 회전금지 | 1.3m 높이제한 | 80% 지지충족 | 하중제한 준수 | 상위 10% 중량박스 빨간색 표시 | 길이 10cm 여유 | 최대 4단적재")
+st.caption("✅ 규칙 : 비용최소화 | 회전금지 | 길이우선 적재 | 1.3m 높이제한 | 최대 4단적재 | 바닥면 80% 지지충족 | 하중제한 준수 | 차량길이 10cm 여유 | 상위 10% 중량박스 빨간색 표시")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
@@ -505,7 +505,6 @@ if uploaded_file:
 
                     # [수정] Dashboard Style Layout 적용
                     
-                    # 1. Summary Metrics
                     m1, m2, m3 = st.columns(3)
                     m1.metric("총 배차 차량", f"{len(trucks)}대")
                     m2.metric("총 예상 운송비", f"{total_cost:,}원")
@@ -513,7 +512,6 @@ if uploaded_file:
                     
                     st.divider()
 
-                    # 2. View Controls & Tabs
                     c_view, c_tabs = st.columns([1, 4])
                     
                     with c_view:
@@ -528,17 +526,14 @@ if uploaded_file:
                         for i, tab in enumerate(tabs):
                             with tab:
                                 t = trucks[i]
-                                # Detail Layout: Info(Left) vs Chart(Right)
                                 c_info, c_chart = st.columns([1, 3])
                                 
                                 with c_info:
                                     st.markdown(f"#### {t.name}")
                                     
-                                    # Load Factor Progress
                                     weight_pct = min(1.0, t.total_weight / t.max_weight)
                                     st.progress(weight_pct, text=f"중량 적재율: {weight_pct*100:.1f}%")
                                     
-                                    # Stats Table
                                     st.dataframe(pd.DataFrame({
                                         "항목": ["박스 수", "적재 중량", "운송 비용"],
                                         "값": [f"{len(t.items)}개", f"{t.total_weight:,.0f} kg", f"{t.cost:,} 원"]
