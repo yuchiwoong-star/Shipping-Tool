@@ -40,7 +40,9 @@ class Truck:
         fit = False
         if self.total_weight + item.weight > self.max_weight:
             return False
+        
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
+        
         for p in self.pivots:
             px, py, pz = p
             if (px + item.w > self.w) or (py + item.d > self.d) or (pz + item.h > self.h):
@@ -49,11 +51,13 @@ class Truck:
                 continue
             if not self._check_support(item, px, py, pz):
                 continue
+            
             item.x, item.y, item.z = px, py, pz
             self.items.append(item)
             self.total_weight += item.weight
             fit = True
             break
+        
         if fit:
             self.pivots.append([item.x + item.w, item.y, item.z])
             self.pivots.append([item.x, item.y + item.d, item.z])
@@ -101,16 +105,30 @@ def load_data(df):
         weights = pd.to_numeric(df['중량'], errors='coerce').dropna().tolist()
         if weights:
             sorted_weights = sorted(weights, reverse=True)
-            top_n = math.ceil(len(weights) * 0.1); cutoff_index = max(0, top_n - 1)
+            top_n = math.ceil(len(weights) * 0.1)
+            cutoff_index = max(0, top_n - 1)
             heavy_threshold = sorted_weights[cutoff_index]
-        else: heavy_threshold = float('inf')
-    except: heavy_threshold = float('inf')
+        else:
+            heavy_threshold = float('inf')
+    except:
+        heavy_threshold = float('inf')
+
     for index, row in df.iterrows():
         try:
-            box = Box(str(row['박스번호']), float(row['폭']), float(row['높이']), float(row['길이']), float(row['중량']))
-            box.is_heavy = float(row['중량']) >= heavy_threshold and float(row['중량']) > 0
+            name = str(row['박스번호'])
+            w = float(row['폭'])
+            h = float(row['높이'])
+            l = float(row['길이'])
+            weight = float(row['중량'])
+            
+            box = Box(name, w, h, l, weight)
+            if weight >= heavy_threshold and weight > 0:
+                box.is_heavy = True
+            else:
+                box.is_heavy = False
             items.append(box)
-        except: continue
+        except:
+            continue
     return items
 
 def run_optimization(all_items):
@@ -123,18 +141,34 @@ def run_optimization(all_items):
                 spec = TRUCK_DB[t_name]
                 t = Truck(t_name, spec['w'], 1300, spec['l'], spec['weight'], spec['cost'])
                 test_i = sorted(rem, key=lambda x: x.volume, reverse=True)
-                count = 0; w_sum = 0
+                count = 0
+                w_sum = 0
                 for item in test_i:
                     new_box = Box(item.name, item.w, item.h, item.d, item.weight)
                     new_box.is_heavy = getattr(item, 'is_heavy', False)
-                    if t.put_item(new_box): count += 1; w_sum += item.weight
-                if count > 0: candidates.append({'truck': t, 'is_all': (count == len(rem)), 'eff': w_sum / spec['cost'], 'cost': spec['cost']})
+                    if t.put_item(new_box):
+                        count += 1; w_sum += item.weight
+                if count > 0:
+                    candidates.append({
+                        'truck': t,
+                        'is_all': (count == len(rem)),
+                        'eff': w_sum / spec['cost'],
+                        'cost': spec['cost']
+                    })
             if not candidates: break
             fits_all = [c for c in candidates if c['is_all']]
-            best_t = sorted(fits_all, key=lambda x: x['cost'])[0]['truck'] if fits_all else sorted(candidates, key=lambda x: x['eff'], reverse=True)[0]['truck']
-            used.append(best_t); packed_n = [i.name for i in best_t.items]; rem = [i for i in rem if i.name not in packed_n]
+            if fits_all:
+                best_t = sorted(fits_all, key=lambda x: x['cost'])[0]['truck']
+            else:
+                best_t = sorted(candidates, key=lambda x: x['eff'], reverse=True)[0]['truck']
+            used.append(best_t)
+            packed_n = [i.name for i in best_t.items]
+            rem = [i for i in rem if i.name not in packed_n]
         return used
-    best_solution = None; min_total_cost = float('inf')
+
+    best_solution = None
+    min_total_cost = float('inf')
+    
     for start_truck_name in TRUCK_DB:
         spec = TRUCK_DB[start_truck_name]
         start_truck = Truck(start_truck_name, spec['w'], 1300, spec['l'], spec['weight'], spec['cost'])
@@ -143,21 +177,35 @@ def run_optimization(all_items):
              new_box = Box(item.name, item.w, item.h, item.d, item.weight)
              new_box.is_heavy = getattr(item, 'is_heavy', False)
              start_truck.put_item(new_box)
+        
         if not start_truck.items: continue
-        packed_names = [i.name for i in start_truck.items]; remaining = [i for i in all_items if i.name not in packed_names]
+
+        packed_names = [i.name for i in start_truck.items]
+        remaining = [i for i in all_items if i.name not in packed_names]
+        
         current_solution = [start_truck]
-        if remaining: current_solution.extend(solve_remaining_greedy(remaining))
+        if remaining:
+            sub_solution = solve_remaining_greedy(remaining)
+            current_solution.extend(sub_solution)
+        
         total_packed_count = sum([len(t.items) for t in current_solution])
-        if total_packed_count < len(all_items): continue
+        if total_packed_count < len(all_items):
+            continue
+
         current_total_cost = sum(t.cost for t in current_solution)
-        if current_total_cost < min_total_cost: min_total_cost = current_total_cost; best_solution = current_solution
+        if current_total_cost < min_total_cost:
+            min_total_cost = current_total_cost
+            best_solution = current_solution
+    
     final_trucks = []
     if best_solution:
-        for idx, t in enumerate(best_solution): t.name = f"{t.name} (No.{idx+1})"; final_trucks.append(t)
+        for idx, t in enumerate(best_solution):
+            t.name = f"{t.name} (No.{idx+1})"
+            final_trucks.append(t)
     return final_trucks
 
 # ==========================================
-# 4. 시각화 (화살표 치수선 추가 및 기존 디자인 유지)
+# 4. 시각화 (바퀴 삭제 + 프레임 강화 + 화살표 치수선)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -165,103 +213,218 @@ def draw_truck_3d(truck, camera_view="iso"):
     spec = TRUCK_DB.get(original_name, TRUCK_DB["5톤"])
     W, L, Real_H = spec['w'], spec['l'], spec['real_h']
     LIMIT_H = 1300
+    
+    # 조명 효과
     light_eff = dict(ambient=0.9, diffuse=0.5, specular=0.1, roughness=0.5)
 
+    # 큐브 그리기 도우미 함수
     def draw_cube(x, y, z, w, l, h, face_color, line_color=None, opacity=1.0):
-        fig.add_trace(go.Mesh3d(x=[x, x+w, x+w, x, x, x+w, x+w, x], y=[y, y, y+l, y+l, y, y, y+l, y+l], z=[z, z, z, z, z+h, z+h, z+h, z+h], i=[7,0,0,0,4,4,6,6,4,0,3,2], j=[3,4,1,2,5,6,5,2,0,1,6,3], k=[0,7,2,3,6,7,1,1,5,5,7,6], color=face_color, opacity=opacity, flatshading=True, lighting=light_eff, hoverinfo='skip'))
+        # 면 그리기
+        fig.add_trace(go.Mesh3d(
+            x=[x, x+w, x+w, x, x, x+w, x+w, x],
+            y=[y, y, y+l, y+l, y, y, y+l, y+l],
+            z=[z, z, z, z, z+h, z+h, z+h, z+h],
+            i=[7, 0, 0, 0, 4, 4, 6, 6, 4, 0, 3, 2],
+            j=[3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3],
+            k=[0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6],
+            color=face_color, opacity=opacity, flatshading=True, 
+            lighting=light_eff, hoverinfo='skip'
+        ))
+        # 테두리 그리기
         if line_color:
             xe=[x,x+w,x+w,x,x,None, x,x+w,x+w,x,x,None, x,x,None, x+w,x+w,None, x+w,x+w,None, x,x]
             ye=[y,y,y+l,y+l,y,None, y,y,y+l,y+l,y,None, y,y,None, y,y,None, y+l,y+l,None, y+l,y+l]
             ze=[z,z,z,z,z,None, z+h,z+h,z+h,z+h,z+h,None, z,z+h,None, z,z+h,None, z,z+h,None, z,z+h]
             fig.add_trace(go.Scatter3d(x=xe, y=ye, z=ze, mode='lines', line=dict(color=line_color, width=3), showlegend=False, hoverinfo='skip'))
 
-    # 1. 적재함 메인 바닥 및 사이드 강화
+    # 1. 트럭 하부 프레임 (바퀴 없이 깔끔하게)
     ch_h = 100
-    draw_cube(0, 0, -ch_h, W, L, ch_h, '#D9D9D9', '#333333') # 바닥판
-    draw_cube(-60, 0, -ch_h, 60, L, 120, '#444444', '#222222') # 사이드 프레임 L
-    draw_cube(W, 0, -ch_h, 60, L, 120, '#444444', '#222222') # 사이드 프레임 R
+    # 메인 바닥판
+    draw_cube(0, 0, -ch_h, W, L, ch_h, '#D9D9D9', '#333333')
+    
+    # 사이드 가드 (하단 프레임 강조)
+    side_h = 120; side_w = 60
+    draw_cube(-side_w, 0, -ch_h, side_w, L, side_h, '#444444', '#222222') # 좌
+    draw_cube(W, 0, -ch_h, side_w, L, side_h, '#444444', '#222222')       # 우
 
-    # 2. 컨테이너 골조 및 후면 강화
-    draw_cube(0, 0, 0, W, L, Real_H, '#EEF5FF', '#666666', opacity=0.1) 
+    # 2. 후면 프레임 & 등기구 디테일
     f_tk = 80; bmp_h = 120
+    # 후면 수직 기둥
     draw_cube(-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, '#333333', '#000000') 
     draw_cube(W-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, '#333333', '#000000')
+    # 후면 상단 프레임
     draw_cube(-f_tk/2, L-f_tk, Real_H, W+f_tk, f_tk, f_tk, '#333333', '#000000')
+    # 범퍼
     draw_cube(-f_tk/2, L, -ch_h-bmp_h, W+f_tk, 50, bmp_h, '#222222')
-    draw_cube(100, L+50, -ch_h-bmp_h+30, 150, 15, 60, '#FF0000', '#990000')
-    draw_cube(W-250, L+50, -ch_h-bmp_h+30, 150, 15, 60, '#FF0000', '#990000')
+    # 후미등 (입체감 있는 빨간 박스)
+    draw_cube(100, L+50, -ch_h-bmp_h+30, 180, 20, 60, '#FF0000', '#990000')
+    draw_cube(W-280, L+50, -ch_h-bmp_h+30, 180, 20, 60, '#FF0000', '#990000')
 
-    # 3. 치수 표시 (화살표 추가)
-    OFFSET = 600
-    def draw_dim(p1, p2, text, color='black'):
-        # 화살표 선 그리기 (lines+markers 모드 사용)
+    # 3. 투명 컨테이너 벽면
+    draw_cube(0, 0, 0, W, L, Real_H, '#EEF5FF', '#666666', opacity=0.1)
+
+    # 4. 치수선 그리기 (오류 없는 go.Cone 화살표 사용)
+    OFFSET = 800 
+    def draw_arrow_dim(p1, p2, text, color='black'):
+        # 선 그리기
         fig.add_trace(go.Scatter3d(
             x=[p1[0], p2[0]], y=[p1[1], p2[1]], z=[p1[2], p2[2]],
-            mode='lines+markers',
-            line=dict(color=color, width=3),
-            marker=dict(symbol='arrow', size=8, angleref='previous', standoff=8), # 화살표 설정
+            mode='lines', line=dict(color=color, width=3),
             showlegend=False, hoverinfo='skip'
         ))
-        # 텍스트 표시
+        
+        # 화살표 머리 (Cone 사용)
+        vec = np.array(p2) - np.array(p1)
+        length = np.linalg.norm(vec)
+        if length > 0:
+            u, v, w = vec / length
+            # p2 끝 화살표
+            fig.add_trace(go.Cone(
+                x=[p2[0]], y=[p2[1]], z=[p2[2]], u=[u], v=[v], w=[w],
+                sizemode="absolute", sizeref=150, anchor="tip",
+                showscale=False, colorscale=[[0, color], [1, color]], hoverinfo='skip'
+            ))
+            # p1 끝 화살표 (반대 방향)
+            fig.add_trace(go.Cone(
+                x=[p1[0]], y=[p1[1]], z=[p1[2]], u=[-u], v=[-v], w=[-w],
+                sizemode="absolute", sizeref=150, anchor="tip",
+                showscale=False, colorscale=[[0, color], [1, color]], hoverinfo='skip'
+            ))
+
+        # 텍스트
+        mid = [(p1[0]+p2[0])/2, (p1[1]+p2[1])/2, (p1[2]+p2[2])/2]
         fig.add_trace(go.Scatter3d(
-            x=[(p1[0]+p2[0])/2], y=[(p1[1]+p2[1])/2], z=[(p1[2]+p2[2])/2],
+            x=[mid[0]], y=[mid[1]], z=[mid[2]],
             mode='text', text=[f"<b>{text}</b>"],
-            textfont=dict(color=color, size=14),
+            textfont=dict(color=color, size=14, family="Arial Black"),
             showlegend=False, hoverinfo='skip'
         ))
 
-    draw_dim([0, -OFFSET, 0], [W, -OFFSET, 0], f"폭 : {int(W)}")
-    draw_dim([-OFFSET, 0, 0], [-OFFSET, L, 0], f"길이 : {int(L)}")
-    draw_dim([-OFFSET, L, 0], [-OFFSET, L, LIMIT_H], f"높이제한(최대4단) : {LIMIT_H}", color='red')
+    # 치수선 적용
+    draw_arrow_dim([0, -OFFSET, 0], [W, -OFFSET, 0], f"폭 : {int(W)}")
+    draw_arrow_dim([-OFFSET, 0, 0], [-OFFSET, L, 0], f"길이 : {int(L)}")
+    draw_arrow_dim([-OFFSET, L, 0], [-OFFSET, L, LIMIT_H], f"높이제한(최대4단) : {LIMIT_H}", color='red')
 
-    # 4. 박스 렌더링 (툴팁 유지)
+    # 높이 제한 평면 (빨간 점선)
+    fig.add_trace(go.Scatter3d(
+        x=[0, W, W, 0, 0], y=[0, 0, L, L, 0], z=[LIMIT_H]*5,
+        mode='lines', line=dict(color='red', width=4, dash='dash'),
+        showlegend=False, hoverinfo='skip'
+    ))
+
+    # 5. 화물 박스 렌더링
     annotations = []
     for item in truck.items:
         col = '#FF6B6B' if item.is_heavy else '#FAD7A0'
+        # 박스 그리기
         draw_cube(item.x, item.y, item.z, item.w, item.d, item.h, col, '#000000')
+        
+        # 툴팁용 투명 메쉬
         fig.add_trace(go.Mesh3d(
             x=[item.x, item.x+item.w, item.x+item.w, item.x, item.x, item.x+item.w, item.x+item.w, item.x],
             y=[item.y, item.y, item.y+item.d, item.y+item.d, item.y, item.y, item.y+item.d, item.y+item.d],
             z=[item.z, item.z, item.z, item.z, item.z+item.h, item.z+item.h, item.z+item.h, item.z+item.h],
             i=[7, 0, 0, 0, 4, 4, 6, 6, 4, 0, 3, 2], j=[3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3], k=[0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6],
-            opacity=0.0, hoverinfo='text', hovertext=f"<b>📦 {item.name}</b><br>규격: {int(item.w)}x{int(item.d)}x{int(item.h)}<br>중량: {int(item.weight):,}kg"
+            opacity=0.0, hoverinfo='text',
+            hovertext=f"<b>📦 {item.name}</b><br>규격: {int(item.w)}x{int(item.d)}x{int(item.h)}<br>중량: {int(item.weight):,}kg"
         ))
-        annotations.append(dict(x=item.x + item.w/2, y=item.y + item.d/2, z=item.z + item.h/2, text=f"<b>{item.name}</b>", xanchor="center", yanchor="middle", showarrow=False, font=dict(color="black", size=10), bgcolor="rgba(255,255,255,0.4)"))
+        # 박스 번호
+        annotations.append(dict(
+            x=item.x + item.w/2, y=item.y + item.d/2, z=item.z + item.h/2,
+            text=f"<b>{item.name}</b>",
+            xanchor="center", yanchor="middle", showarrow=False,
+            font=dict(color="black", size=11), bgcolor="rgba(255,255,255,0.5)"
+        ))
 
-    # 5. 적재 제한선 평면 (빨간 점선)
-    fig.add_trace(go.Scatter3d(x=[0, W, W, 0, 0], y=[0, 0, L, L, 0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False, hoverinfo='skip'))
+    # 6. 카메라 설정 (기본 ISO)
+    if camera_view == "top": eye = dict(x=0, y=0.01, z=2.5); up = dict(x=0, y=1, z=0)
+    elif camera_view == "side": eye = dict(x=2.5, y=0, z=0.2); up = dict(x=0, y=0, z=1)
+    else: eye = dict(x=1.8, y=-1.8, z=1.0); up = dict(x=0, y=0, z=1)
 
-    eye = dict(x=1.8, y=-1.8, z=1.0) if camera_view=="iso" else (dict(x=0, y=0.01, z=2.5) if camera_view=="top" else dict(x=2.5, y=0, z=0.2))
-    fig.update_layout(scene=dict(aspectmode='data', xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False), bgcolor='white', camera=dict(eye=eye, up=dict(x=0, y=0, z=1)), annotations=annotations), margin=dict(l=0, r=0, b=0, t=0), height=650, uirevision=str(uuid.uuid4()))
+    fig.update_layout(
+        scene=dict(
+            aspectmode='data', xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False),
+            bgcolor='white', camera=dict(eye=eye, up=up), annotations=annotations
+        ),
+        margin=dict(l=0, r=0, b=0, t=0), height=600, uirevision=str(uuid.uuid4())
+    )
     return fig
 
 # ==========================================
-# 5. 메인 UI (기존 동일 유지)
+# 5. 메인 UI
 # ==========================================
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
 st.caption("✅ 규칙 : 비용최적화 | 부피순 적재 | 회전금지 | 1.3m 제한 | 80% 지지충족 | 하중제한 준수 | 상위 10% 중량박스 빨간색 표시")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
+
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
 if uploaded_file:
     try:
-        df = pd.read_csv(uploaded_file, encoding='cp949') if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
-        df.columns = [c.strip() for c in df.columns]; st.subheader(f"📋 데이터 확인 ({len(df)}건)")
-        df_display = df.copy(); cols_to_format = [c for c in ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)'] if c in df_display.columns]
-        for col in cols_to_format: df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}")
-        if '박스번호' in df_display.columns: df_display['박스번호'] = df_display['박스번호'].astype(str)
-        st.dataframe(df_display.style.set_properties(**{'text-align': 'center'}), use_container_width=True, hide_index=True, height=250)
+        if uploaded_file.name.endswith('.csv'): df = pd.read_csv(uploaded_file, encoding='cp949')
+        else: df = pd.read_excel(uploaded_file)
+        df.columns = [c.strip() for c in df.columns]
+        
+        st.subheader(f"📋 데이터 확인 ({len(df)}건)")
+        
+        df_display = df.copy()
+        
+        cols_to_format = [c for c in ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)'] if c in df_display.columns]
+        for col in cols_to_format:
+            df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}")
+        
+        if '박스번호' in df_display.columns:
+            df_display['박스번호'] = df_display['박스번호'].astype(str)
+
+        styler = df_display.style.set_properties(**{'text-align': 'center'})
+        styler.set_table_styles([
+            {'selector': 'th', 'props': [('text-align', 'center')]},
+            {'selector': 'td', 'props': [('text-align', 'center')]}
+        ])
+        
+        st.dataframe(styler, use_container_width=True, hide_index=True, height=250)
+
         st.subheader("🚛 차량 기준 정보")
-        truck_rows = [{"차량": n, "적재폭 (mm)": s['w'], "적재길이 (mm)": s['l'], "허용하중 (kg)": s['weight'], "운송단가": s['cost']} for n, s in TRUCK_DB.items()]
+        
+        truck_rows = []
+        for name, spec in TRUCK_DB.items():
+            truck_rows.append({
+                "차량": name,
+                "적재폭 (mm)": spec['w'],
+                "적재길이 (mm)": spec['l'],
+                "허용하중 (kg)": spec['weight'],
+                "운송단가": spec['cost']
+            })
         df_truck = pd.DataFrame(truck_rows)
-        for col in ['적재폭 (mm)', '적재길이 (mm)', '허용하중 (kg)', '운송단가']: df_truck[col] = df_truck[col].apply(lambda x: f"{x:,.0f}")
-        st.dataframe(df_truck.style.set_properties(**{'text-align': 'center'}), use_container_width=True, hide_index=True)
-        if st.button("최적 배차 실행 (최소비용)", type="primary"): st.session_state['run_result'] = load_data(df)
+        
+        format_cols_truck = ['적재폭 (mm)', '적재길이 (mm)', '허용하중 (kg)', '운송단가']
+        for col in format_cols_truck:
+             df_truck[col] = df_truck[col].apply(lambda x: f"{x:,.0f}")
+        
+        st_truck = df_truck.style.set_properties(**{'text-align': 'center'})
+        st_truck.set_table_styles([
+            {'selector': 'th', 'props': [('text-align', 'center')]},
+            {'selector': 'td', 'props': [('text-align', 'center')]}
+        ])
+
+        st.dataframe(st_truck, use_container_width=True, hide_index=True)
+
+        if st.button("최적 배차 실행 (최소비용)", type="primary"):
+            st.session_state['run_result'] = load_data(df)
+            
         if 'run_result' in st.session_state:
             items = st.session_state['run_result']
-            if items:
+            if not items: st.error("데이터 변환 실패.")
+            else:
                 trucks = run_optimization(items)
                 if trucks:
-                    total_cost = sum(t.cost for t in trucks); st.success(f"✅ 분석 완료: 총 {len(trucks)}대 | 예상 총 운송비: {total_cost:,}원")
+                    t_names = [t.name.split(' ')[0] for t in trucks]
+                    from collections import Counter
+                    cnt = Counter(t_names)
+                    total_cost = sum(t.cost for t in trucks)
+
+                    summary = ", ".join([f"{k} {v}대" for k,v in cnt.items()])
+                    st.success(f"✅ 분석 완료: 총 {len(trucks)}대 ({summary}) | 예상 총 운송비: {total_cost:,}원")
+                    
                     c1, c2, c3, _ = st.columns([1, 1, 1, 5])
                     with c1: 
                         if st.button("↗️ 쿼터뷰"): st.session_state['view_mode'] = 'iso'
@@ -269,13 +432,19 @@ if uploaded_file:
                         if st.button("⬆️ 탑뷰"): st.session_state['view_mode'] = 'top'
                     with c3: 
                         if st.button("➡️ 사이드뷰"): st.session_state['view_mode'] = 'side'
+                    
                     tabs = st.tabs([t.name for t in trucks])
                     for i, tab in enumerate(tabs):
                         with tab:
                             col1, col2 = st.columns([1, 4])
                             t = trucks[i]
                             with col1:
-                                st.markdown(f"### **{t.name}**"); st.write(f"- 박스: **{len(t.items)}개**"); st.write(f"- 중량: **{t.total_weight:,} kg**"); st.write(f"- 비용: **{t.cost:,} 원**")
+                                st.markdown(f"### **{t.name}**")
+                                st.write(f"- 박스: **{len(t.items)}개**")
+                                st.write(f"- 중량: **{t.total_weight:,} kg**")
+                                st.write(f"- 비용: **{t.cost:,} 원**")
                                 with st.expander("목록 보기"): st.write(", ".join([b.name for b in t.items]))
-                            with col2: st.plotly_chart(draw_truck_3d(t, st.session_state['view_mode']), use_container_width=True)
+                            with col2:
+                                st.plotly_chart(draw_truck_3d(t, st.session_state['view_mode']), use_container_width=True)
+                else: st.warning("적재 가능한 차량을 찾지 못했습니다.")
     except Exception as e: st.error(f"오류 발생: {e}")
