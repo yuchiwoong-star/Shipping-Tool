@@ -88,7 +88,7 @@ class Truck:
         
         if fit:
             self.pivots.append([item.x + item.w, item.y, item.z])
-            # [수정] 길이 방향(y)으로 다음에 박스를 놓을 때는 BOX_GAP_L(300mm) 만큼 띄워서 피벗 생성
+            # [규칙 적용] 길이 방향 피벗 생성 시 간격 추가
             self.pivots.append([item.x, item.y + item.d + BOX_GAP_L, item.z])
             self.pivots.append([item.x, item.y, item.z + item.h])
         return fit
@@ -131,9 +131,10 @@ TRUCK_DB = {
 def load_data(df):
     items = []
     try:
-        cols = {c: c for c in df.columns}
-        
+        # 컬럼명 매핑 (유연하게 처리)
         weight_col = next((c for c in df.columns if '중량' in c), None)
+        
+        # 중량 기준 정렬을 위한 임계값 계산
         if weight_col:
             weights = pd.to_numeric(df[weight_col], errors='coerce').dropna().tolist()
             if weights:
@@ -157,7 +158,7 @@ def load_data(df):
                 w = float(row[w_col])
                 h = float(row[h_col])
                 l = float(row[l_col])
-                weight = float(row[weight_col])
+                weight = float(row[weight_col]) if weight_col else 0.0
                 
                 box = Box(name, w, h, l, weight)
                 if weight >= heavy_threshold and weight > 0:
@@ -172,7 +173,7 @@ def load_data(df):
     return items
 
 def run_optimization(all_items):
-    # [수정] 차량 길이 여유 20cm (200mm)
+    # [설정] 차량 길이 여유 20cm (200mm)
     MARGIN_LENGTH = 200 
 
     def solve_remaining_greedy(current_items):
@@ -182,9 +183,13 @@ def run_optimization(all_items):
             candidates = []
             for t_name in TRUCK_DB:
                 spec = TRUCK_DB[t_name]
+                # [적용] 실제 제원보다 MARGIN_LENGTH 작은 공간으로 계산
                 effective_l = spec['l'] - MARGIN_LENGTH
+                if effective_l <= 0: continue # 유효 길이가 0 이하인 경우 패스
+
                 t = Truck(t_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
                 
+                # [적용] 길이(d) 기준 정렬 (긴 박스 우선)
                 test_i = sorted(rem, key=lambda x: x.d, reverse=True)
                 count = 0
                 w_sum = 0
@@ -214,9 +219,12 @@ def run_optimization(all_items):
     best_solution = None
     min_total_cost = float('inf')
     
+    # 첫 차를 종류별로 시도하여 최적해 탐색
     for start_truck_name in TRUCK_DB:
         spec = TRUCK_DB[start_truck_name]
         effective_l = spec['l'] - MARGIN_LENGTH
+        if effective_l <= 0: continue
+
         start_truck = Truck(start_truck_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
         
         items_sorted = sorted(all_items, key=lambda x: x.d, reverse=True)
@@ -424,14 +432,27 @@ if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
 if uploaded_file:
     try:
-        if uploaded_file.name.endswith('.csv'): df = pd.read_csv(uploaded_file, encoding='cp949')
-        else: df = pd.read_excel(uploaded_file)
+        # [수정] 파일 인코딩 에러 방지를 위한 처리 (utf-8 -> cp949 -> euc-kr)
+        if uploaded_file.name.endswith('.csv'):
+            try:
+                df = pd.read_csv(uploaded_file, encoding='utf-8')
+            except UnicodeDecodeError:
+                uploaded_file.seek(0)
+                try:
+                    df = pd.read_csv(uploaded_file, encoding='cp949')
+                except UnicodeDecodeError:
+                    uploaded_file.seek(0)
+                    df = pd.read_csv(uploaded_file, encoding='euc-kr')
+        else:
+            df = pd.read_excel(uploaded_file)
+            
         df.columns = [c.strip() for c in df.columns]
         
         st.subheader(f"📋 데이터 확인 ({len(df)}건)")
         
         df_display = df.copy()
         
+        # [수정] 입력 파일 컬럼명 유연하게 매핑
         rename_map = {}
         for c in df_display.columns:
             if '박스' in c or '번호' in c: rename_map[c] = '박스번호'
