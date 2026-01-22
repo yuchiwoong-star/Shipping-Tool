@@ -201,7 +201,7 @@ def run_optimization(all_items):
     return final_trucks
 
 # ==========================================
-# 4. 시각화 (수정됨: 후미등 위치 및 치수선 텍스트 스타일 수정)
+# 4. 시각화 (수정됨: 후미등 돌출 및 측면 프레임 삭제)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -237,9 +237,9 @@ def draw_truck_3d(truck, camera_view="iso"):
     # 메인 바닥판
     draw_cube(0, 0, -ch_h, W, L, ch_h, '#AAAAAA', COLOR_FRAME)
     
-    # 하단 사이드 프레임 (좌/우)
-    draw_cube(-f_tk, 0, -ch_h, f_tk, L, side_h, COLOR_FRAME, COLOR_FRAME_LINE)
-    draw_cube(W, 0, -ch_h, f_tk, L, side_h, COLOR_FRAME, COLOR_FRAME_LINE)
+    # [수정] 하단 사이드 프레임 (좌/우) 삭제
+    # draw_cube(-f_tk, 0, -ch_h, f_tk, L, side_h, COLOR_FRAME, COLOR_FRAME_LINE)
+    # draw_cube(W, 0, -ch_h, f_tk, L, side_h, COLOR_FRAME, COLOR_FRAME_LINE)
 
     # 앞면(운전석쪽, y=L 부근) 프레임
     draw_cube(-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) 
@@ -249,23 +249,23 @@ def draw_truck_3d(truck, camera_view="iso"):
     # 범퍼 (앞쪽 y=L 에 위치)
     draw_cube(-f_tk/2, L, -ch_h-bmp_h, W+f_tk, f_tk, bmp_h, '#222222') 
     
-    # [수정] 후미등 3색 구현 (위치 수정: 범퍼 안쪽 양 끝으로 이동)
-    # y=L 위치, z 위치 고정
+    # [수정] 후미등 3색 구현 (위치 수정: 범퍼 바깥쪽으로 돌출)
+    # y 위치를 L + f_tk 로 변경하여 범퍼 뒤에 붙도록 함
+    light_y = L + f_tk
     light_z = -ch_h-bmp_h+30
     light_w = 60; light_h = 20; light_d = 60
     
     # 왼쪽 후미등 세트 (범퍼 왼쪽 끝에서 시작: 빨강 -> 주황 -> 흰색)
-    left_start = -f_tk/2 # 범퍼 왼쪽 끝 좌표
-    draw_cube(left_start, L, light_z, light_w, light_h, light_d, '#FF0000', '#990000') # 빨강 (브레이크)
-    draw_cube(left_start+light_w, L, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') # 주황 (방향지시)
-    draw_cube(left_start+light_w*2, L, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA') # 흰색 (후진)
+    left_start = -f_tk/2 
+    draw_cube(left_start, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000') # 빨강
+    draw_cube(left_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') # 주황
+    draw_cube(left_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA') # 흰색
 
     # 오른쪽 후미등 세트 (범퍼 오른쪽 끝에 맞춰 끝남: 흰색 -> 주황 -> 빨강)
-    # 범퍼 오른쪽 끝 좌표는 W + f_tk/2
-    right_start = (W + f_tk/2) - (light_w * 3) # 범퍼 오른쪽 끝에서 조명 3개 너비만큼 뺀 위치
-    draw_cube(right_start, L, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA') # 흰색 (후진)
-    draw_cube(right_start+light_w, L, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') # 주황 (방향지시)
-    draw_cube(right_start+light_w*2, L, light_z, light_w, light_h, light_d, '#FF0000', '#990000') # 빨강 (브레이크)
+    right_start = (W + f_tk/2) - (light_w * 3)
+    draw_cube(right_start, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA') # 흰색
+    draw_cube(right_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') # 주황
+    draw_cube(right_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000') # 빨강
 
     # 후면(입구, y=0 부근) 프레임
     draw_cube(-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) 
@@ -312,7 +312,6 @@ def draw_truck_3d(truck, camera_view="iso"):
             mid[0] = -TEXT_OFFSET
             mid[2] = 0
         
-        # [수정] 텍스트 굵기 제거(<b> 태그 삭제) 및 폰트 스타일 변경(Arial, size 12)
         fig.add_trace(go.Scatter3d(
             x=[mid[0]], y=[mid[1]], z=[mid[2]],
             mode='text', text=[text], 
