@@ -157,7 +157,7 @@ def run_optimization(all_items):
     return final_trucks
 
 # ==========================================
-# 4. 시각화 (바퀴 제거 및 치수선/프레임 강조)
+# 4. 시각화 (화살표 치수선 추가 및 기존 디자인 유지)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -178,29 +178,37 @@ def draw_truck_3d(truck, camera_view="iso"):
     # 1. 적재함 메인 바닥 및 사이드 강화
     ch_h = 100
     draw_cube(0, 0, -ch_h, W, L, ch_h, '#D9D9D9', '#333333') # 바닥판
-    # 사이드 하단 프레임 강조
-    draw_cube(-60, 0, -ch_h, 60, L, 120, '#444444', '#222222') 
-    draw_cube(W, 0, -ch_h, 60, L, 120, '#444444', '#222222') 
+    draw_cube(-60, 0, -ch_h, 60, L, 120, '#444444', '#222222') # 사이드 프레임 L
+    draw_cube(W, 0, -ch_h, 60, L, 120, '#444444', '#222222') # 사이드 프레임 R
 
     # 2. 컨테이너 골조 및 후면 강화
     draw_cube(0, 0, 0, W, L, Real_H, '#EEF5FF', '#666666', opacity=0.1) 
     f_tk = 80; bmp_h = 120
-    # 후면 수직 기둥 (입구)
     draw_cube(-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, '#333333', '#000000') 
     draw_cube(W-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, '#333333', '#000000')
-    # 후면 가로 프레임
     draw_cube(-f_tk/2, L-f_tk, Real_H, W+f_tk, f_tk, f_tk, '#333333', '#000000')
-    # 범퍼
     draw_cube(-f_tk/2, L, -ch_h-bmp_h, W+f_tk, 50, bmp_h, '#222222')
-    # 후미등 강조 (입체 큐브)
     draw_cube(100, L+50, -ch_h-bmp_h+30, 150, 15, 60, '#FF0000', '#990000')
     draw_cube(W-250, L+50, -ch_h-bmp_h+30, 150, 15, 60, '#FF0000', '#990000')
 
-    # 3. 치수 표시 (폭, 길이, 높이제한) - 과거 버전 스타일 반영
+    # 3. 치수 표시 (화살표 추가)
     OFFSET = 600
     def draw_dim(p1, p2, text, color='black'):
-        fig.add_trace(go.Scatter3d(x=[p1[0], p2[0]], y=[p1[1], p2[1]], z=[p1[2], p2[2]], mode='lines', line=dict(color=color, width=2), showlegend=False, hoverinfo='skip'))
-        fig.add_trace(go.Scatter3d(x=[(p1[0]+p2[0])/2], y=[(p1[1]+p2[1])/2], z=[(p1[2]+p2[2])/2], mode='text', text=[f"<b>{text}</b>"], textfont=dict(color=color, size=14), showlegend=False, hoverinfo='skip'))
+        # 화살표 선 그리기 (lines+markers 모드 사용)
+        fig.add_trace(go.Scatter3d(
+            x=[p1[0], p2[0]], y=[p1[1], p2[1]], z=[p1[2], p2[2]],
+            mode='lines+markers',
+            line=dict(color=color, width=3),
+            marker=dict(symbol='arrow', size=8, angleref='previous', standoff=8), # 화살표 설정
+            showlegend=False, hoverinfo='skip'
+        ))
+        # 텍스트 표시
+        fig.add_trace(go.Scatter3d(
+            x=[(p1[0]+p2[0])/2], y=[(p1[1]+p2[1])/2], z=[(p1[2]+p2[2])/2],
+            mode='text', text=[f"<b>{text}</b>"],
+            textfont=dict(color=color, size=14),
+            showlegend=False, hoverinfo='skip'
+        ))
 
     draw_dim([0, -OFFSET, 0], [W, -OFFSET, 0], f"폭 : {int(W)}")
     draw_dim([-OFFSET, 0, 0], [-OFFSET, L, 0], f"길이 : {int(L)}")
