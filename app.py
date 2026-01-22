@@ -233,7 +233,6 @@ def draw_truck_3d(truck, camera_view="iso"):
 
     # 1. 트럭 프레임 및 바닥
     ch_h = 100; f_tk = 40; 
-    # [수정] 범퍼 높이(프레임 역할)를 120 -> 140으로 키움
     bmp_h = 140; 
     side_h = 120
     
@@ -248,24 +247,20 @@ def draw_truck_3d(truck, camera_view="iso"):
     # 범퍼 (앞쪽 y=L 에 위치)
     draw_cube(-f_tk/2, L, -ch_h-bmp_h, W+f_tk, f_tk, bmp_h, '#222222') 
     
-    # [수정] 후미등 3색 구현 (위치 및 배치 수정)
-    # y 위치는 L + f_tk (범퍼 뒤에 부착)
+    # 후미등 3색 구현
     light_y = L + f_tk
-    # 범퍼 높이가 140으로 커졌으므로, 조명 위치도 살짝 조정
     light_z = -ch_h-bmp_h+40 
     light_w = 60; light_h = 20; light_d = 60
     
-    # [수정] 양 끝단에서 안쪽으로 들어갈 마진 설정 (150mm)
     margin_in = 150
 
-    # 왼쪽 후미등 세트 (범퍼 왼쪽 끝 + 마진에서 시작: 빨강 -> 주황 -> 흰색)
+    # 왼쪽 후미등 세트
     left_start = -f_tk/2 + margin_in
     draw_cube(left_start, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000') # 빨강
     draw_cube(left_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') # 주황
     draw_cube(left_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA') # 흰색
 
-    # 오른쪽 후미등 세트 (범퍼 오른쪽 끝 - 마진에 맞춰 끝남: 흰색 -> 주황 -> 빨강)
-    # 오른쪽 시작점 = (전체폭 + 프레임반) - 마진 - 조명3개폭
+    # 오른쪽 후미등 세트
     right_start = (W + f_tk/2) - margin_in - (light_w * 3)
     draw_cube(right_start, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA') # 흰색
     draw_cube(right_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') # 주황
@@ -276,7 +271,7 @@ def draw_truck_3d(truck, camera_view="iso"):
     draw_cube(W-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) 
     draw_cube(-f_tk/2, 0, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, COLOR_FRAME_LINE) 
 
-    # 천장 프레임 (테두리)
+    # 천장 프레임
     draw_cube(-f_tk/2, 0, Real_H, f_tk, L, f_tk, COLOR_FRAME, COLOR_FRAME_LINE) 
     draw_cube(W-f_tk/2, 0, Real_H, f_tk, L, f_tk, COLOR_FRAME, COLOR_FRAME_LINE) 
 
@@ -370,7 +365,7 @@ def draw_truck_3d(truck, camera_view="iso"):
     return fig
 
 # ==========================================
-# 5. 메인 UI (기존 동일 유지)
+# 5. 메인 UI
 # ==========================================
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
 st.caption("✅ 규칙 : 비용최적화 | 부피순 적재 | 회전금지 | 1.3m 제한 | 80% 지지충족 | 하중제한 준수 | 상위 10% 중량박스 빨간색 표시")
@@ -388,6 +383,7 @@ if uploaded_file:
         df_display = df.copy()
         
         cols_to_format = [c for c in ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)'] if c in df_display.columns]
+        # [수정] 1,000 단위 콤마 서식 적용 (문자열 변환)
         for col in cols_to_format:
             df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}")
         
@@ -400,9 +396,10 @@ if uploaded_file:
             {'selector': 'td', 'props': [('text-align', 'center')]}
         ])
         
+        # [수정] use_container_width=True 로 열 너비 균등 및 꽉 채우기
         st.dataframe(styler, use_container_width=True, hide_index=True, height=250)
 
-        # [복구] 차량 기준 정보 테이블 (삭제되었던 부분 복구)
+        # [복구] 차량 기준 정보 테이블
         st.subheader("🚛 차량 기준 정보")
         
         truck_rows = []
@@ -417,6 +414,7 @@ if uploaded_file:
         df_truck = pd.DataFrame(truck_rows)
         
         format_cols_truck = ['적재폭 (mm)', '적재길이 (mm)', '허용하중 (kg)', '운송단가']
+        # [수정] 1,000 단위 콤마 서식 적용
         for col in format_cols_truck:
              df_truck[col] = df_truck[col].apply(lambda x: f"{x:,.0f}")
         
@@ -426,6 +424,7 @@ if uploaded_file:
             {'selector': 'td', 'props': [('text-align', 'center')]}
         ])
 
+        # [수정] use_container_width=True 로 열 너비 균등 및 꽉 채우기
         st.dataframe(st_truck, use_container_width=True, hide_index=True)
 
         if st.button("최적 배차 실행 (최소비용)", type="primary"):
