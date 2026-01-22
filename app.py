@@ -38,24 +38,32 @@ class Truck:
         self.pivots = [[0.0, 0.0, 0.0]]
 
     def put_item(self, item):
+        # [규칙] 박스 간 길이방향 간격 30cm (300mm)
+        BOX_GAP_L = 300
+
         fit = False
         if self.total_weight + item.weight > self.max_weight:
             return False
         
+        # 피벗 정렬: Z(낮은순) -> Y(안쪽순) -> X(왼쪽순)
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
         
         for p in self.pivots:
             px, py, pz = p
             
+            # 1. 물리적 공간 벗어남 체크 (높이 1.3m 제한 포함)
             if (px + item.w > self.w) or (py + item.d > self.d) or (pz + item.h > self.h):
                 continue
             
+            # 2. 충돌 체크
             if self._check_collision(item, px, py, pz):
                 continue
             
+            # 3. 지지 기반 체크
             if not self._check_support(item, px, py, pz):
                 continue
             
+            # 4. 적재 단수(Level) 체크 (최대 4단)
             level = 1
             if pz > 0.001: 
                 max_below_level = 0
@@ -80,7 +88,8 @@ class Truck:
         
         if fit:
             self.pivots.append([item.x + item.w, item.y, item.z])
-            self.pivots.append([item.x, item.y + item.d, item.z])
+            # [수정] 길이 방향(y)으로 다음에 박스를 놓을 때는 BOX_GAP_L(300mm) 만큼 띄워서 피벗 생성
+            self.pivots.append([item.x, item.y + item.d + BOX_GAP_L, item.z])
             self.pivots.append([item.x, item.y, item.z + item.h])
         return fit
 
@@ -163,8 +172,8 @@ def load_data(df):
     return items
 
 def run_optimization(all_items):
-    # [설정] 10cm(100mm) 여유 확보
-    MARGIN_LENGTH = 100 
+    # [수정] 차량 길이 여유 20cm (200mm)
+    MARGIN_LENGTH = 200 
 
     def solve_remaining_greedy(current_items):
         used = []
@@ -409,7 +418,7 @@ def draw_truck_3d(truck, camera_view="iso"):
 # 5. 메인 UI
 # ==========================================
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
-st.caption("✅ 규칙 : 비용최소화 | 회전금지 | 길이우선 적재 | 1.3m 높이제한 | 최대 4단적재 | 바닥면 80% 지지충족 | 하중제한 준수 | 차량길이 10cm 여유 | 상위 10% 중량박스 빨간색 표시")
+st.caption("✅ 규칙 : 비용최소화 | 회전금지 | 길이우선 적재 | 1.3m 높이제한 | 최대 4단적재 | 바닥면 80% 지지충족 | 하중제한 준수 | 차량길이 20cm 여유 | 박스간 간격(길이방향) 30cm 여유 | 상위 10% 중량박스 빨간색 표시")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
@@ -503,8 +512,7 @@ if uploaded_file:
                     cnt = Counter(t_names)
                     total_cost = sum(t.cost for t in trucks)
 
-                    # [수정] Dashboard Style Layout 적용
-                    
+                    # 1. Summary Metrics
                     m1, m2, m3 = st.columns(3)
                     m1.metric("총 배차 차량", f"{len(trucks)}대")
                     m2.metric("총 예상 운송비", f"{total_cost:,}원")
@@ -512,6 +520,7 @@ if uploaded_file:
                     
                     st.divider()
 
+                    # 2. View Controls & Tabs
                     c_view, c_tabs = st.columns([1, 4])
                     
                     with c_view:
