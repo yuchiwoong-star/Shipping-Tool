@@ -139,7 +139,7 @@ def load_data(df):
     return items
 
 def run_optimization(all_items):
-    # [수정] 10cm(100mm) 여유 확보로 변경
+    # [설정] 10cm(100mm) 여유 확보
     MARGIN_LENGTH = 100 
 
     def solve_remaining_greedy(current_items):
@@ -149,11 +149,11 @@ def run_optimization(all_items):
             candidates = []
             for t_name in TRUCK_DB:
                 spec = TRUCK_DB[t_name]
-                # [적용] 실제 제원보다 MARGIN_LENGTH 작은 공간으로 계산
                 effective_l = spec['l'] - MARGIN_LENGTH
                 t = Truck(t_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
                 
-                test_i = sorted(rem, key=lambda x: x.volume, reverse=True)
+                # [수정] 부피(volume) 대신 길이(d) 기준으로 정렬하여 긴 것부터 적재 시도
+                test_i = sorted(rem, key=lambda x: x.d, reverse=True)
                 count = 0
                 w_sum = 0
                 for item in test_i:
@@ -184,11 +184,11 @@ def run_optimization(all_items):
     
     for start_truck_name in TRUCK_DB:
         spec = TRUCK_DB[start_truck_name]
-        # [적용] 실제 제원보다 MARGIN_LENGTH 작은 공간으로 계산
         effective_l = spec['l'] - MARGIN_LENGTH
         start_truck = Truck(start_truck_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
         
-        items_sorted = sorted(all_items, key=lambda x: x.volume, reverse=True)
+        # [수정] 부피(volume) 대신 길이(d) 기준으로 정렬
+        items_sorted = sorted(all_items, key=lambda x: x.d, reverse=True)
         for item in items_sorted:
              new_box = Box(item.name, item.w, item.h, item.d, item.weight)
              new_box.is_heavy = getattr(item, 'is_heavy', False)
@@ -247,7 +247,7 @@ def draw_truck_3d(truck, camera_view="iso"):
         ))
         if line_color:
             xe=[x,x+w,x+w,x,x,None, x,x+w,x+w,x,x,None, x,x,None, x+w,x+w,None, x+w,x+w,None, x,x]
-            ye=[y,y,y+l,y+l,y,None, y,y,y+l,y+l,y,None, y,y,None, y,y,None, y+l,y+l,None, y+l,y+l]
+            ye=[y,y,y+l,y+l,y,None, y,y,y+l,y+l,y,None, y,y,None, y+l,y+l,None, y+l,y+l]
             ze=[z,z,z,z,z,None, z+h,z+h,z+h,z+h,z+h,None, z,z+h,None, z,z+h,None, z,z+h,None, z,z+h]
             fig.add_trace(go.Scatter3d(x=xe, y=ye, z=ze, mode='lines', line=dict(color=line_color, width=3), showlegend=False, hoverinfo='skip'))
 
