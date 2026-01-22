@@ -205,7 +205,7 @@ def run_optimization(all_items):
     return final_trucks
 
 # ==========================================
-# 4. 시각화 (상세 요청사항 반영)
+# 4. 시각화 (두 번째 사진 완벽 재현 - 설명된 수정사항 적용)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -242,43 +242,12 @@ def draw_truck_3d(truck, camera_view="iso"):
             ze=[z,z,z,z,z,None, z+h,z+h,z+h,z+h,z+h,None, z,z+h,None, z,z+h,None, z,z+h,None, z,z+h]
             fig.add_trace(go.Scatter3d(x=xe, y=ye, z=ze, mode='lines', line=dict(color=line_color, width=2), showlegend=False, hoverinfo='skip'))
 
-    # --- 도우미 함수: 둥근 모서리 프레임 그리기 (R처리) ---
-    def draw_rounded_frame(x, y, z, w, h, thickness, radius, color, lighting):
-        # 수직 기둥 (좌/우)
-        draw_cube(x, y, z+radius, thickness, thickness, h-2*radius, color, lighting=lighting)
-        draw_cube(x+w-thickness, y, z+radius, thickness, thickness, h-2*radius, color, lighting=lighting)
-        # 상단 바
-        draw_cube(x+radius, y, z+h-thickness, w-2*radius, thickness, thickness, color, lighting=lighting)
-        
-        # 둥근 모서리 (구)
-        def draw_sphere_corner(cx, cy, cz):
-            phi = np.linspace(0, np.pi/2, 10)
-            theta = np.linspace(0, np.pi/2, 10)
-            phi, theta = np.meshgrid(phi, theta)
-            xs = cx + radius * np.sin(phi) * np.cos(theta)
-            ys = cy + thickness/2 + radius * np.sin(phi) * np.sin(theta) # y축 방향으로 두께만큼 이동
-            zs = cz + radius * np.cos(phi)
-            fig.add_trace(go.Surface(x=xs, y=ys, z=zs, surfacecolor=np.full_like(xs, 0), colorscale=[[0, color], [1, color]], showscale=False, lighting=lighting, hoverinfo='skip'))
-            
-        # 상단 좌/우 모서리
-        # draw_sphere_corner(x+radius, y, z+h-radius)
-        # draw_sphere_corner(x+w-radius, y, z+h-radius)
-        # (Plotly Surface로 완벽한 R구현이 복잡하여, 큐브 조합으로 근사하게 표현하거나 생략)
-        # 여기서는 단순화를 위해 큐브로 코너를 채움
-        draw_cube(x, y, z+h-thickness, radius, thickness, thickness, color, lighting=lighting)
-        draw_cube(x+w-radius, y, z+h-thickness, radius, thickness, thickness, color, lighting=lighting)
-
     # --- 도우미 함수: 펜더(타이어 가드) 그리기 ---
     def draw_fender(cx, cy, cz, r, w, color):
         theta = np.linspace(0, np.pi, 30) # 반원
         x_out = cx + r * np.cos(theta); z_out = cz + r * np.sin(theta)
         x_in = cx + (r-10) * np.cos(theta); z_in = cz + (r-10) * np.sin(theta)
         
-        # 펜더 윗면 (반원호판)
-        x_f = np.concatenate([x_out, x_in[::-1]])
-        y_f = np.array([cy-w/2]*len(x_out) + [cy-w/2]*len(x_in))
-        z_f = np.concatenate([z_out, z_in[::-1]])
-        # (Mesh3d로 곡면을 만들기 위해 삼각화 필요, 여기서는 단순화된 방식으로 큐브 조합 또는 Scatter3d 라인으로 대체)
         # 펜더를 얇은 큐브들의 집합으로 근사
         for i in range(len(theta)-1):
             x1, z1 = x_out[i], z_out[i]; x2, z2 = x_out[i+1], z_out[i+1]
@@ -412,62 +381,8 @@ if uploaded_file:
         st.subheader(f"📋 데이터 확인 ({len(df)}건)")
         
         df_display = df.copy()
+        
+        # 숫자 -> 문자열 변환 (왼쪽 정렬 유도)
         cols_to_format = [c for c in ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)'] if c in df_display.columns]
         for col in cols_to_format:
-            df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}")
-        if '박스번호' in df_display.columns:
-            df_display['박스번호'] = df_display['박스번호'].astype(str)
-
-        styler = df_display.style.set_properties(**{'text-align': 'center'})
-        styler.set_table_styles([{'selector': 'th', 'props': [('text-align', 'center')]}, {'selector': 'td', 'props': [('text-align', 'center')]}])
-        st.dataframe(styler, use_container_width=True, hide_index=True, height=250)
-
-        st.subheader("🚛 차량 기준 정보")
-        truck_rows = []
-        for name, spec in TRUCK_DB.items():
-            truck_rows.append({"차량": name, "적재폭 (mm)": spec['w'], "적재길이 (mm)": spec['l'], "허용하중 (kg)": spec['weight'], "운송단가": spec['cost']})
-        df_truck = pd.DataFrame(truck_rows)
-        format_cols_truck = ['적재폭 (mm)', '적재길이 (mm)', '허용하중 (kg)', '운송단가']
-        for col in format_cols_truck:
-             df_truck[col] = df_truck[col].apply(lambda x: f"{x:,.0f}")
-        st_truck = df_truck.style.set_properties(**{'text-align': 'center'})
-        st_truck.set_table_styles([{'selector': 'th', 'props': [('text-align', 'center')]}, {'selector': 'td', 'props': [('text-align', 'center')]}])
-        st.dataframe(st_truck, use_container_width=True, hide_index=True)
-
-        if st.button("최적 배차 실행 (최소비용)", type="primary"):
-            st.session_state['run_result'] = load_data(df)
-            
-        if 'run_result' in st.session_state:
-            items = st.session_state['run_result']
-            if not items: st.error("데이터 변환 실패.")
-            else:
-                trucks = run_optimization(items)
-                if trucks:
-                    t_names = [t.name.split(' ')[0] for t in trucks]
-                    from collections import Counter
-                    cnt = Counter(t_names)
-                    total_cost = sum(t.cost for t in trucks)
-                    summary = ", ".join([f"{k} {v}대" for k,v in cnt.items()])
-                    st.success(f"✅ 분석 완료: 총 {len(trucks)}대 ({summary}) | 예상 총 운송비: {total_cost:,}원")
-                    c1, c2, c3, _ = st.columns([1, 1, 1, 5])
-                    with c1: 
-                        if st.button("↗️ 쿼터뷰"): st.session_state['view_mode'] = 'iso'
-                    with c2: 
-                        if st.button("⬆️ 탑뷰"): st.session_state['view_mode'] = 'top'
-                    with c3: 
-                        if st.button("➡️ 사이드뷰"): st.session_state['view_mode'] = 'side'
-                    tabs = st.tabs([t.name for t in trucks])
-                    for i, tab in enumerate(tabs):
-                        with tab:
-                            col1, col2 = st.columns([1, 4])
-                            t = trucks[i]
-                            with col1:
-                                st.markdown(f"### **{t.name}**")
-                                st.write(f"- 박스: **{len(t.items)}개**")
-                                st.write(f"- 중량: **{t.total_weight:,} kg**")
-                                st.write(f"- 비용: **{t.cost:,} 원**")
-                                with st.expander("목록 보기"): st.write(", ".join([b.name for b in t.items]))
-                            with col2:
-                                st.plotly_chart(draw_truck_3d(t, st.session_state['view_mode']), use_container_width=True)
-                else: st.warning("적재 가능한 차량을 찾지 못했습니다.")
-    except Exception as e: st.error(f"오류 발생: {e}")
+            df_
