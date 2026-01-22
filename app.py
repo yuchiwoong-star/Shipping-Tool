@@ -19,6 +19,7 @@ class Box:
         self.y = 0.0
         self.z = 0.0
         self.is_heavy = False
+        self.level = 1 # [추가] 박스 적재 단수 (기본 1단)
     
     @property
     def volume(self):
@@ -40,20 +41,51 @@ class Truck:
         fit = False
         if self.total_weight + item.weight > self.max_weight:
             return False
+        
+        # 피벗 정렬: Z(낮은순) -> Y(안쪽순) -> X(왼쪽순)
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
+        
         for p in self.pivots:
             px, py, pz = p
+            
+            # 1. 물리적 공간 벗어남 체크 (높이 1.3m 제한 포함)
             if (px + item.w > self.w) or (py + item.d > self.d) or (pz + item.h > self.h):
                 continue
+            
+            # 2. 충돌 체크
             if self._check_collision(item, px, py, pz):
                 continue
+            
+            # 3. 지지 기반 체크
             if not self._check_support(item, px, py, pz):
                 continue
+            
+            # 4. [추가] 적재 단수(Level) 체크 (최대 4단)
+            level = 1
+            if pz > 0.001: # 바닥이 아닌 경우 아래 박스 확인
+                max_below_level = 0
+                for exist in self.items:
+                    # 바로 아래층에 있는 박스인지 확인 (높이 차이가 미세할 때)
+                    if abs((exist.z + exist.h) - pz) < 1.0:
+                        # 겹치는 영역이 있는지 확인 (지지가 되는 박스들)
+                        ox = max(0.0, min(px + item.w, exist.x + exist.w) - max(px, exist.x))
+                        oy = max(0.0, min(py + item.d, exist.y + exist.d) - max(py, exist.y))
+                        if ox * oy > 0: # 겹친다면
+                            if exist.level > max_below_level:
+                                max_below_level = exist.level
+                level = max_below_level + 1
+            
+            if level > 4: # 4단 초과 시 적재 불가
+                continue
+
+            # 적재 확정
             item.x, item.y, item.z = px, py, pz
+            item.level = level # 단수 저장
             self.items.append(item)
             self.total_weight += item.weight
             fit = True
             break
+        
         if fit:
             self.pivots.append([item.x + item.w, item.y, item.z])
             self.pivots.append([item.x, item.y + item.d, item.z])
@@ -149,10 +181,12 @@ def run_optimization(all_items):
             candidates = []
             for t_name in TRUCK_DB:
                 spec = TRUCK_DB[t_name]
+                # [적용] 실제 제원보다 MARGIN_LENGTH 작은 공간으로 계산
                 effective_l = spec['l'] - MARGIN_LENGTH
+                # 높이 제한 1300mm 적용
                 t = Truck(t_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
                 
-                # [수정] 부피(volume) 대신 길이(d) 기준으로 정렬하여 긴 것부터 적재 시도
+                # [적용] 길이(d) 기준 정렬 (긴 박스 우선)
                 test_i = sorted(rem, key=lambda x: x.d, reverse=True)
                 count = 0
                 w_sum = 0
@@ -187,7 +221,7 @@ def run_optimization(all_items):
         effective_l = spec['l'] - MARGIN_LENGTH
         start_truck = Truck(start_truck_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
         
-        # [수정] 부피(volume) 대신 길이(d) 기준으로 정렬
+        # [적용] 길이(d) 기준 정렬 (긴 박스 우선)
         items_sorted = sorted(all_items, key=lambda x: x.d, reverse=True)
         for item in items_sorted:
              new_box = Box(item.name, item.w, item.h, item.d, item.weight)
@@ -387,7 +421,6 @@ def draw_truck_3d(truck, camera_view="iso"):
 # 5. 메인 UI
 # ==========================================
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
-# [수정] 규칙 텍스트 변경
 st.caption("✅ 규칙 : 비용최소화 | 부피순 적재 | 회전금지 | 1.3m 높이제한 | 80% 지지충족 | 하중제한 준수 | 상위 10% 중량박스 빨간색 표시 | 길이 10cm 여유")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 
