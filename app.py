@@ -130,7 +130,7 @@ TRUCK_DB = {
 def load_data(df):
     items = []
     try:
-        # 컬럼명 정규화 (공백 제거)
+        # 컬럼명 정규화
         df.columns = [str(c).strip() for c in df.columns]
         
         weight_col = next((c for c in df.columns if '중량' in c), None)
@@ -432,32 +432,29 @@ if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
 if uploaded_file:
     try:
+        # [수정] 파일 로딩 로직 강화 (seek(0) 및 에러 처리 강화)
         df = None
-        # [수정] 파일 로딩 로직 강화 (seek(0) 추가)
         if uploaded_file.name.lower().endswith('.csv'):
-            encodings = ['utf-8', 'cp949', 'euc-kr', 'latin1']
+            # CSV: cp949(한글 엑셀 기본) -> utf-8 -> euc-kr 순 시도
+            encodings = ['cp949', 'utf-8', 'euc-kr', 'latin1']
             for enc in encodings:
                 try:
-                    uploaded_file.seek(0) # 커서 초기화
+                    uploaded_file.seek(0)
                     df = pd.read_csv(uploaded_file, encoding=enc)
                     break
                 except Exception:
                     continue
         else:
+            # Excel: openpyxl 등 엔진 시도
             try:
                 uploaded_file.seek(0)
-                df = pd.read_excel(uploaded_file, engine='openpyxl')
-            except Exception:
-                uploaded_file.seek(0) # 커서 초기화 후 재시도
-                try:
-                    df = pd.read_excel(uploaded_file)
-                except:
-                    pass
+                df = pd.read_excel(uploaded_file)
+            except Exception as e:
+                pass
 
         if df is None:
             st.error("파일을 읽을 수 없습니다. (지원되지 않는 형식이거나 인코딩 오류)")
         else:
-            # 컬럼명 정규화
             df.columns = [str(c).strip() for c in df.columns]
             
             st.subheader(f"📋 데이터 확인 ({len(df)}건)")
