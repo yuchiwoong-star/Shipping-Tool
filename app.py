@@ -205,7 +205,7 @@ def run_optimization(all_items):
     return final_trucks
 
 # ==========================================
-# 4. 시각화 (두 번째 사진 완벽 재현 - 설명된 수정사항 적용)
+# 4. 시각화 (앞/뒤/천장 프레임 적용, 오류 수정)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -246,7 +246,6 @@ def draw_truck_3d(truck, camera_view="iso"):
     def draw_fender(cx, cy, cz, r, w, color):
         theta = np.linspace(0, np.pi, 30) # 반원
         x_out = cx + r * np.cos(theta); z_out = cz + r * np.sin(theta)
-        x_in = cx + (r-10) * np.cos(theta); z_in = cz + (r-10) * np.sin(theta)
         
         # 펜더를 얇은 큐브들의 집합으로 근사
         for i in range(len(theta)-1):
@@ -256,7 +255,6 @@ def draw_truck_3d(truck, camera_view="iso"):
     # --- 도우미 함수: 디테일한 타이어 그리기 ---
     def draw_detailed_tire(cx, cy, cz):
         r_tire = 280; w_tire = 160; r_rim = 170
-        # 타이어 (검은색 고무)
         theta = np.linspace(0, 2*np.pi, 36)
         xt, yt, zt = [], [], []
         for t in theta:
@@ -271,7 +269,7 @@ def draw_truck_3d(truck, camera_view="iso"):
         fig.add_trace(go.Mesh3d(x=[cx-w_tire/2]*len(y_side), y=y_side, z=z_side, color=COLOR_TIRE, flatshading=True, lighting=LIGHTING_RUBBER, hoverinfo='skip'))
         fig.add_trace(go.Mesh3d(x=[cx+w_tire/2]*len(y_side), y=y_side, z=z_side, color=COLOR_TIRE, flatshading=True, lighting=LIGHTING_RUBBER, hoverinfo='skip'))
 
-        # 림 (은색 금속)
+        # 림
         y_rim = [cy+r_rim*np.cos(t) for t in theta] + [cy]
         z_rim = [cz+r_rim*np.sin(t) for t in theta] + [cz]
         x_rim_pos = cx + w_tire/2 + 2 if cx > W/2 else cx - w_tire/2 - 2
@@ -284,37 +282,39 @@ def draw_truck_3d(truck, camera_view="iso"):
     draw_cube(-60, 0, -chassis_h, 60, L, 120, COLOR_CHASSIS, None, lighting=LIGHTING_METAL)
     draw_cube(W, 0, -chassis_h, 60, L, 120, COLOR_CHASSIS, None, lighting=LIGHTING_METAL)
 
-    # 2. 앞/뒤 프레임 (R처리된 형태)
+    # 2. 프레임 (앞, 뒤, 천장 전체 적용)
     f_tk = 100
-    # draw_rounded_frame(0, 0, -chassis_h, W, Real_H+chassis_h+20, f_tk, 50, COLOR_FRAME, LIGHTING_METAL) # 앞
-    # draw_rounded_frame(0, L-f_tk, -chassis_h, W, Real_H+chassis_h+20, f_tk, 50, COLOR_FRAME, LIGHTING_METAL) # 뒤
-    # (R처리 구현이 복잡하여, 기존 큐브 방식으로 하되 모서리를 다듬는 형태로 근사)
-    draw_cube(-f_tk/2, -f_tk/2, -chassis_h, f_tk, f_tk, Real_H+chassis_h+20, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 앞좌측 기둥
-    draw_cube(W-f_tk/2, -f_tk/2, -chassis_h, f_tk, f_tk, Real_H+chassis_h+20, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 앞우측 기둥
-    draw_cube(-f_tk/2, -f_tk/2, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 앞상단바
+    
+    # [뒷문] 프레임
     draw_cube(-f_tk/2, L-f_tk/2, -chassis_h, f_tk, f_tk, Real_H+chassis_h+20, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 뒤좌측 기둥
     draw_cube(W-f_tk/2, L-f_tk/2, -chassis_h, f_tk, f_tk, Real_H+chassis_h+20, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 뒤우측 기둥
     draw_cube(-f_tk/2, L-f_tk/2, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 뒤상단바
 
+    # [앞문] 프레임 (동일 규격)
+    draw_cube(-f_tk/2, -f_tk/2, -chassis_h, f_tk, f_tk, Real_H+chassis_h+20, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 앞좌측 기둥
+    draw_cube(W-f_tk/2, -f_tk/2, -chassis_h, f_tk, f_tk, Real_H+chassis_h+20, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 앞우측 기둥
+    draw_cube(-f_tk/2, -f_tk/2, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 앞상단바
+
+    # [천장] 프레임 (좌우 테두리)
+    draw_cube(-f_tk/2, 0, Real_H, f_tk, L, f_tk, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 좌측 천장빔
+    draw_cube(W-f_tk/2, 0, Real_H, f_tk, L, f_tk, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 우측 천장빔
+
 
     # 3. 후미 (범퍼, 번호판, 3구 원형 후미등)
     bumper_h = 180
-    draw_cube(-f_tk/2, L, -chassis_h-bumper_h, W+f_tk, 30, bumper_h, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 메인 범퍼 ('ㅛ'자 가로바)
-    # 번호판 (중앙 네모)
-    draw_cube(W/2 - 100, L+30, -chassis_h-bumper_h/2-30, 200, 5, 60, '#FFFFFF', '#000000', lighting=LIGHTING_PLASTIC)
-    # 3구 원형 후미등 (좌우)
+    draw_cube(-f_tk/2, L, -chassis_h-bumper_h, W+f_tk, 30, bumper_h, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 범퍼
+    draw_cube(W/2 - 100, L+30, -chassis_h-bumper_h/2-30, 200, 5, 60, '#FFFFFF', '#000000', lighting=LIGHTING_PLASTIC) # 번호판
+    
+    # 3구 원형 후미등 (뒷문 쪽에만 적용)
     def draw_round_tail_light(x, y, z, color):
-        # (구를 사용하여 원형 등 표현, 여기서는 Scatter3d 마커로 대체)
         fig.add_trace(go.Scatter3d(x=[x], y=[y], z=[z], mode='markers', marker=dict(color=color, size=15, symbol='circle'), showlegend=False, hoverinfo='skip'))
     
     light_y = L + 35; light_z = -chassis_h - bumper_h/2
-    # 좌측 (빨강-주황-흰색)
     draw_round_tail_light(100, light_y, light_z, '#FF0000'); draw_round_tail_light(150, light_y, light_z, '#FF7F00'); draw_round_tail_light(200, light_y, light_z, '#FFFFFF')
-    # 우측 (흰색-주황-빨강)
     draw_round_tail_light(W-200, light_y, light_z, '#FFFFFF'); draw_round_tail_light(W-150, light_y, light_z, '#FF7F00'); draw_round_tail_light(W-100, light_y, light_z, '#FF0000')
 
 
-    # 4. 타이어 및 펜더 (가드)
+    # 4. 타이어 및 펜더
     wheel_z = -chassis_h - 300
     fender_r = 340; fender_w = 180
     # 앞 2축
@@ -385,4 +385,81 @@ if uploaded_file:
         # 숫자 -> 문자열 변환 (왼쪽 정렬 유도)
         cols_to_format = [c for c in ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)'] if c in df_display.columns]
         for col in cols_to_format:
-            df_
+            df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}")
+        
+        if '박스번호' in df_display.columns:
+            df_display['박스번호'] = df_display['박스번호'].astype(str)
+
+        styler = df_display.style.set_properties(**{'text-align': 'center'})
+        styler.set_table_styles([
+            {'selector': 'th', 'props': [('text-align', 'center')]},
+            {'selector': 'td', 'props': [('text-align', 'center')]}
+        ])
+        
+        st.dataframe(styler, use_container_width=True, hide_index=True, height=250)
+
+        st.subheader("🚛 차량 기준 정보")
+        
+        truck_rows = []
+        for name, spec in TRUCK_DB.items():
+            truck_rows.append({
+                "차량": name,
+                "적재폭 (mm)": spec['w'],
+                "적재길이 (mm)": spec['l'],
+                "허용하중 (kg)": spec['weight'],
+                "운송단가": spec['cost']
+            })
+        df_truck = pd.DataFrame(truck_rows)
+        
+        format_cols_truck = ['적재폭 (mm)', '적재길이 (mm)', '허용하중 (kg)', '운송단가']
+        for col in format_cols_truck:
+             df_truck[col] = df_truck[col].apply(lambda x: f"{x:,.0f}")
+        
+        st_truck = df_truck.style.set_properties(**{'text-align': 'center'})
+        st_truck.set_table_styles([
+            {'selector': 'th', 'props': [('text-align', 'center')]},
+            {'selector': 'td', 'props': [('text-align', 'center')]}
+        ])
+
+        st.dataframe(st_truck, use_container_width=True, hide_index=True)
+
+        if st.button("최적 배차 실행 (최소비용)", type="primary"):
+            st.session_state['run_result'] = load_data(df)
+            
+        if 'run_result' in st.session_state:
+            items = st.session_state['run_result']
+            if not items: st.error("데이터 변환 실패.")
+            else:
+                trucks = run_optimization(items)
+                if trucks:
+                    t_names = [t.name.split(' ')[0] for t in trucks]
+                    from collections import Counter
+                    cnt = Counter(t_names)
+                    total_cost = sum(t.cost for t in trucks)
+
+                    summary = ", ".join([f"{k} {v}대" for k,v in cnt.items()])
+                    st.success(f"✅ 분석 완료: 총 {len(trucks)}대 ({summary}) | 예상 총 운송비: {total_cost:,}원")
+                    
+                    c1, c2, c3, _ = st.columns([1, 1, 1, 5])
+                    with c1: 
+                        if st.button("↗️ 쿼터뷰"): st.session_state['view_mode'] = 'iso'
+                    with c2: 
+                        if st.button("⬆️ 탑뷰"): st.session_state['view_mode'] = 'top'
+                    with c3: 
+                        if st.button("➡️ 사이드뷰"): st.session_state['view_mode'] = 'side'
+                    
+                    tabs = st.tabs([t.name for t in trucks])
+                    for i, tab in enumerate(tabs):
+                        with tab:
+                            col1, col2 = st.columns([1, 4])
+                            t = trucks[i]
+                            with col1:
+                                st.markdown(f"### **{t.name}**")
+                                st.write(f"- 박스: **{len(t.items)}개**")
+                                st.write(f"- 중량: **{t.total_weight:,} kg**")
+                                st.write(f"- 비용: **{t.cost:,} 원**")
+                                with st.expander("목록 보기"): st.write(", ".join([b.name for b in t.items]))
+                            with col2:
+                                st.plotly_chart(draw_truck_3d(t, st.session_state['view_mode']), use_container_width=True)
+        # except block was missing previously, adding it now to fix SyntaxError
+    except Exception as e: st.error(f"오류 발생: {e}")
