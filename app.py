@@ -201,7 +201,7 @@ def run_optimization(all_items):
     return final_trucks
 
 # ==========================================
-# 4. 시각화 (프레임 전체 적용 및 화살표 치수선)
+# 4. 시각화 (수정됨: 프레임 두께/색상 및 후미등 위치 변경)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -211,8 +211,9 @@ def draw_truck_3d(truck, camera_view="iso"):
     LIMIT_H = 1300
     
     light_eff = dict(ambient=0.9, diffuse=0.5, specular=0.1, roughness=0.5)
-    COLOR_FRAME = '#333333' # 프레임 색상 (진한 회색)
-    COLOR_FRAME_LINE = '#000000' # 프레임 테두리 색상
+    # [수정] 프레임 색상을 진한 검정에서 어두운 회색으로 변경
+    COLOR_FRAME = '#555555' # 프레임 면 색상 (어두운 회색)
+    COLOR_FRAME_LINE = '#333333' # 프레임 테두리 선 색상 (더 진한 회색)
 
     def draw_cube(x, y, z, w, l, h, face_color, line_color=None, opacity=1.0):
         fig.add_trace(go.Mesh3d(
@@ -232,7 +233,10 @@ def draw_truck_3d(truck, camera_view="iso"):
             fig.add_trace(go.Scatter3d(x=xe, y=ye, z=ze, mode='lines', line=dict(color=line_color, width=3), showlegend=False, hoverinfo='skip'))
 
     # 1. 트럭 프레임 및 바닥 (전체 적용)
-    ch_h = 100; f_tk = 80; bmp_h = 120; side_h = 120
+    ch_h = 100; 
+    # [수정] 프레임 두께를 얇게 변경 (80 -> 40)
+    f_tk = 40; 
+    bmp_h = 120; side_h = 120
     
     # 메인 바닥판 (색상 통일)
     draw_cube(0, 0, -ch_h, W, L, ch_h, '#AAAAAA', COLOR_FRAME)
@@ -241,18 +245,23 @@ def draw_truck_3d(truck, camera_view="iso"):
     draw_cube(-f_tk, 0, -ch_h, f_tk, L, side_h, COLOR_FRAME, COLOR_FRAME_LINE)
     draw_cube(W, 0, -ch_h, f_tk, L, side_h, COLOR_FRAME, COLOR_FRAME_LINE)
 
-    # 후면(입구) 프레임 및 범퍼, 후미등
-    draw_cube(-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) # 후면 좌측 기둥
-    draw_cube(W-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) # 후면 우측 기둥
-    draw_cube(-f_tk/2, 0, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, COLOR_FRAME_LINE) # 후면 상단바
-    draw_cube(-f_tk/2, -f_tk, -ch_h-bmp_h, W+f_tk, f_tk, bmp_h, '#222222') # 범퍼
-    draw_cube(100, -f_tk, -ch_h-bmp_h+30, 180, 20, 60, '#FF0000', '#990000') # 후미등 L
-    draw_cube(W-280, -f_tk, -ch_h-bmp_h+30, 180, 20, 60, '#FF0000', '#990000') # 후미등 R
-
-    # [신규] 앞문 프레임 (후미등 없음)
+    # [수정] 후면(범퍼/후미등 포함) 프레임을 앞쪽(y=L 방향)으로 이동
+    # 앞면(운전석쪽, y=L 부근) 프레임 및 범퍼, 후미등
+    # 기둥은 L 안쪽에 위치 (y = L - f_tk)
     draw_cube(-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) # 앞면 좌측 기둥
     draw_cube(W-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) # 앞면 우측 기둥
     draw_cube(-f_tk/2, L-f_tk, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, COLOR_FRAME_LINE) # 앞면 상단바
+    
+    # 범퍼와 후미등은 L 바깥쪽에 위치 (y = L 시작점)
+    draw_cube(-f_tk/2, L, -ch_h-bmp_h, W+f_tk, f_tk, bmp_h, '#222222') # 범퍼 (앞쪽으로 이동됨)
+    draw_cube(100, L, -ch_h-bmp_h+30, 180, 20, 60, '#FF0000', '#990000') # 후미등 L (앞쪽으로 이동됨)
+    draw_cube(W-280, L, -ch_h-bmp_h+30, 180, 20, 60, '#FF0000', '#990000') # 후미등 R (앞쪽으로 이동됨)
+
+    # [수정] 기존 앞문 프레임을 후면(입구, y=0 방향)으로 이동
+    # 후면(입구, y=0 부근) 프레임 (후미등 없음)
+    draw_cube(-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) # 후면 좌측 기둥
+    draw_cube(W-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) # 후면 우측 기둥
+    draw_cube(-f_tk/2, 0, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, COLOR_FRAME_LINE) # 후면 상단바
 
     # [신규] 천장 프레임 (테두리)
     draw_cube(-f_tk/2, 0, Real_H, f_tk, L, f_tk, COLOR_FRAME, COLOR_FRAME_LINE) # 천장 좌측
