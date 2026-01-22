@@ -29,7 +29,7 @@ class Truck:
         self.name = name
         self.w = float(w)
         self.h = float(h)
-        self.d = float(d)
+        self.d = float(d) # 여기서 d는 적재함 길이(Length)를 의미
         self.max_weight = float(max_weight)
         self.cost = int(cost)
         self.items = []
@@ -84,7 +84,6 @@ class Truck:
 # ==========================================
 st.set_page_config(layout="wide", page_title="출하박스 적재 최적화 시스템")
 
-# [수정] 차량 높이(real_h)를 1800 -> 2000으로 변경
 TRUCK_DB = {
     "1톤":   {"w": 1600, "real_h": 2000, "l": 2800,  "weight": 1490,  "cost": 78000},
     "2.5톤": {"w": 1900, "real_h": 2000, "l": 4200,  "weight": 3490,  "cost": 110000},
@@ -99,11 +98,8 @@ TRUCK_DB = {
 def load_data(df):
     items = []
     try:
-        # 컬럼명에 단위가 있을 경우와 없을 경우를 모두 처리하기 위해 유연하게 읽음
-        # 데이터프레임의 컬럼을 정규화하여 처리
         cols = {c: c for c in df.columns}
         
-        # 중량 컬럼 찾기
         weight_col = next((c for c in df.columns if '중량' in c), None)
         if weight_col:
             weights = pd.to_numeric(df[weight_col], errors='coerce').dropna().tolist()
@@ -117,7 +113,6 @@ def load_data(df):
         else:
             heavy_threshold = float('inf')
 
-        # 컬럼 매핑 찾기
         name_col = next((c for c in df.columns if '박스' in c or '번호' in c), None)
         w_col = next((c for c in df.columns if '폭' in c), None)
         h_col = next((c for c in df.columns if '높이' in c), None)
@@ -144,6 +139,9 @@ def load_data(df):
     return items
 
 def run_optimization(all_items):
+    # [수정] 30cm(300mm) 여유 확보를 위해 Truck 생성 시 length에서 차감
+    MARGIN_LENGTH = 300 
+
     def solve_remaining_greedy(current_items):
         used = []
         rem = current_items[:]
@@ -151,7 +149,10 @@ def run_optimization(all_items):
             candidates = []
             for t_name in TRUCK_DB:
                 spec = TRUCK_DB[t_name]
-                t = Truck(t_name, spec['w'], 1300, spec['l'], spec['weight'], spec['cost'])
+                # [적용] 실제 제원보다 300mm 작은 공간으로 계산
+                effective_l = spec['l'] - MARGIN_LENGTH
+                t = Truck(t_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
+                
                 test_i = sorted(rem, key=lambda x: x.volume, reverse=True)
                 count = 0
                 w_sum = 0
@@ -183,7 +184,10 @@ def run_optimization(all_items):
     
     for start_truck_name in TRUCK_DB:
         spec = TRUCK_DB[start_truck_name]
-        start_truck = Truck(start_truck_name, spec['w'], 1300, spec['l'], spec['weight'], spec['cost'])
+        # [적용] 실제 제원보다 300mm 작은 공간으로 계산
+        effective_l = spec['l'] - MARGIN_LENGTH
+        start_truck = Truck(start_truck_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
+        
         items_sorted = sorted(all_items, key=lambda x: x.volume, reverse=True)
         for item in items_sorted:
              new_box = Box(item.name, item.w, item.h, item.d, item.weight)
@@ -383,7 +387,8 @@ def draw_truck_3d(truck, camera_view="iso"):
 # 5. 메인 UI
 # ==========================================
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
-st.caption("✅ 규칙 : 비용최적화 | 부피순 적재 | 회전금지 | 1.3m 제한 | 80% 지지충족 | 하중제한 준수 | 상위 10% 중량박스 빨간색 표시")
+# [수정] 규칙에 '길이 30cm 여유' 추가
+st.caption("✅ 규칙 : 비용최적화 | 부피순 적재 | 회전금지 | 1.3m 제한 | 80% 지지충족 | 하중제한 준수 | 상위 10% 중량박스 빨간색 표시 | 길이 30cm 여유")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
@@ -397,8 +402,6 @@ if uploaded_file:
         
         df_display = df.copy()
         
-        # [수정] 데이터 테이블 컬럼명에 단위 추가 및 매핑
-        # 입력 파일의 컬럼명에 따라 매핑 (박스번호, 폭, 높이, 길이, 중량)
         rename_map = {}
         for c in df_display.columns:
             if '박스' in c or '번호' in c: rename_map[c] = '박스번호'
@@ -409,7 +412,6 @@ if uploaded_file:
         
         df_display = df_display.rename(columns=rename_map)
         
-        # [수정] 1,000 단위 콤마 포맷팅 적용
         cols_to_format = ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)']
         for col in cols_to_format:
             if col in df_display.columns:
@@ -424,7 +426,6 @@ if uploaded_file:
             {'selector': 'td', 'props': [('text-align', 'center')]}
         ])
         
-        # [수정] column_config를 사용하여 모든 열 너비 'medium'으로 통일
         st.dataframe(
             styler, 
             use_container_width=True, 
@@ -444,7 +445,7 @@ if uploaded_file:
                 "적재폭 (mm)": spec['w'],
                 "적재길이 (mm)": spec['l'],
                 "허용하중 (kg)": spec['weight'],
-                "운송단가 (원)": spec['cost'] # [수정] 운송단가 -> 운송단가 (원) 변경
+                "운송단가 (원)": spec['cost'] 
             })
         df_truck = pd.DataFrame(truck_rows)
         
@@ -458,7 +459,6 @@ if uploaded_file:
             {'selector': 'td', 'props': [('text-align', 'center')]}
         ])
 
-        # [수정] column_config를 사용하여 모든 열 너비 'medium'으로 통일
         st.dataframe(
             st_truck, 
             use_container_width=True, 
