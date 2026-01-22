@@ -40,7 +40,9 @@ class Truck:
         fit = False
         if self.total_weight + item.weight > self.max_weight:
             return False
+        
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
+        
         for p in self.pivots:
             px, py, pz = p
             if (px + item.w > self.w) or (py + item.d > self.d) or (pz + item.h > self.h):
@@ -49,11 +51,13 @@ class Truck:
                 continue
             if not self._check_support(item, px, py, pz):
                 continue
+            
             item.x, item.y, item.z = px, py, pz
             self.items.append(item)
             self.total_weight += item.weight
             fit = True
             break
+        
         if fit:
             self.pivots.append([item.x + item.w, item.y, item.z])
             self.pivots.append([item.x, item.y + item.d, item.z])
@@ -201,7 +205,7 @@ def run_optimization(all_items):
     return final_trucks
 
 # ==========================================
-# 4. 시각화 (프레임 전체 적용 및 화살표 치수선)
+# 4. 시각화 (프레임, 후미등, 바퀴 디테일 강화)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -210,11 +214,17 @@ def draw_truck_3d(truck, camera_view="iso"):
     W, L, Real_H = spec['w'], spec['l'], spec['real_h']
     LIMIT_H = 1300
     
-    light_eff = dict(ambient=0.9, diffuse=0.5, specular=0.1, roughness=0.5)
-    COLOR_FRAME = '#333333' # 프레임 색상 (진한 회색)
-    COLOR_FRAME_LINE = '#000000' # 프레임 테두리 색상
+    # 조명 효과 설정 (금속 질감 강화)
+    LIGHTING_METAL = dict(ambient=0.6, diffuse=0.7, specular=0.8, roughness=0.2)
+    LIGHTING_RUBBER = dict(ambient=0.4, diffuse=0.5, specular=0.1, roughness=0.9)
+    LIGHTING_PLASTIC = dict(ambient=0.8, diffuse=0.8, specular=0.5, roughness=0.4)
+    
+    COLOR_FRAME = '#222222' # 더 진한 금속 프레임
+    COLOR_TIRE = '#111111' # 타이어 색상
+    COLOR_WHEEL = '#AAAAAA' # 휠(림/허브) 색상 (은색)
 
-    def draw_cube(x, y, z, w, l, h, face_color, line_color=None, opacity=1.0):
+    # --- 도우미 함수: 육면체 그리기 ---
+    def draw_cube(x, y, z, w, l, h, face_color, line_color=None, opacity=1.0, lighting=LIGHTING_METAL):
         fig.add_trace(go.Mesh3d(
             x=[x, x+w, x+w, x, x, x+w, x+w, x],
             y=[y, y, y+l, y+l, y, y, y+l, y+l],
@@ -223,114 +233,174 @@ def draw_truck_3d(truck, camera_view="iso"):
             j=[3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3],
             k=[0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6],
             color=face_color, opacity=opacity, flatshading=True, 
-            lighting=light_eff, hoverinfo='skip'
+            lighting=lighting, hoverinfo='skip'
         ))
         if line_color:
             xe=[x,x+w,x+w,x,x,None, x,x+w,x+w,x,x,None, x,x,None, x+w,x+w,None, x+w,x+w,None, x,x]
             ye=[y,y,y+l,y+l,y,None, y,y,y+l,y+l,y,None, y,y,None, y,y,None, y+l,y+l,None, y+l,y+l]
             ze=[z,z,z,z,z,None, z+h,z+h,z+h,z+h,z+h,None, z,z+h,None, z,z+h,None, z,z+h,None, z,z+h]
-            fig.add_trace(go.Scatter3d(x=xe, y=ye, z=ze, mode='lines', line=dict(color=line_color, width=3), showlegend=False, hoverinfo='skip'))
+            fig.add_trace(go.Scatter3d(x=xe, y=ye, z=ze, mode='lines', line=dict(color=line_color, width=2), showlegend=False, hoverinfo='skip'))
 
-    # 1. 트럭 프레임 및 바닥 (전체 적용)
-    ch_h = 100; f_tk = 80; bmp_h = 120; side_h = 120
-    
-    # 메인 바닥판 (색상 통일)
-    draw_cube(0, 0, -ch_h, W, L, ch_h, '#AAAAAA', COLOR_FRAME)
-    
-    # 하단 사이드 프레임 (좌/우)
-    draw_cube(-f_tk, 0, -ch_h, f_tk, L, side_h, COLOR_FRAME, COLOR_FRAME_LINE)
-    draw_cube(W, 0, -ch_h, f_tk, L, side_h, COLOR_FRAME, COLOR_FRAME_LINE)
+    # 1. 트럭 베이스 및 하단 프레임 (금속 질감)
+    chassis_h = 150 # 섀시 높이 증가
+    draw_cube(0, 0, -chassis_h, W, L, chassis_h, '#333333', None, lighting=LIGHTING_METAL) # 메인 섀시
+    draw_cube(-80, 0, -chassis_h, 80, L, 80, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 사이드 스커트 L
+    draw_cube(W, 0, -chassis_h, 80, L, 80, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 사이드 스커트 R
 
-    # 후면(입구) 프레임 및 범퍼, 후미등
-    draw_cube(-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) # 후면 좌측 기둥
-    draw_cube(W-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) # 후면 우측 기둥
-    draw_cube(-f_tk/2, 0, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, COLOR_FRAME_LINE) # 후면 상단바
-    draw_cube(-f_tk/2, -f_tk, -ch_h-bmp_h, W+f_tk, f_tk, bmp_h, '#222222') # 범퍼
-    draw_cube(100, -f_tk, -ch_h-bmp_h+30, 180, 20, 60, '#FF0000', '#990000') # 후미등 L
-    draw_cube(W-280, -f_tk, -ch_h-bmp_h+30, 180, 20, 60, '#FF0000', '#990000') # 후미등 R
+    # 2. 컨테이너 골조 및 후면 프레임
+    draw_cube(0, 0, 0, W, L, Real_H, '#EEF5FF', '#555555', opacity=0.1, lighting=LIGHTING_PLASTIC) # 투명 컨테이너
+    frame_thickness = 80; bumper_h = 150
+    draw_cube(-frame_thickness/2, L-frame_thickness, -chassis_h, frame_thickness, frame_thickness, Real_H+chassis_h+20, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 후면 기둥 L
+    draw_cube(W-frame_thickness/2, L-frame_thickness, -chassis_h, frame_thickness, frame_thickness, Real_H+chassis_h+20, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 후면 기둥 R
+    draw_cube(-frame_thickness/2, L-frame_thickness, Real_H, W+frame_thickness, frame_thickness, frame_thickness, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 후면 상단바
+    draw_cube(-frame_thickness/2, L, -chassis_h-bumper_h, W+frame_thickness, 50, bumper_h, COLOR_FRAME, None, lighting=LIGHTING_METAL) # 범퍼
 
-    # [신규] 앞문 프레임 (후미등 없음)
-    draw_cube(-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) # 앞면 좌측 기둥
-    draw_cube(W-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) # 앞면 우측 기둥
-    draw_cube(-f_tk/2, L-f_tk, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, COLOR_FRAME_LINE) # 앞면 상단바
+    # 2-1. 사실적인 후미등 (Combination Lamps)
+    def draw_tail_light(x, y, z):
+        # 브레이크등(빨강), 방향지시등(주황), 후진등(흰색) 콤비네이션
+        draw_cube(x, y, z+30, 150, 20, 30, '#FF0000', None, lighting=LIGHTING_PLASTIC) # 브레이크등
+        draw_cube(x+150, y, z+30, 50, 20, 30, '#FF7F00', None, lighting=LIGHTING_PLASTIC) # 방향지시등
+        draw_cube(x+200, y, z+30, 50, 20, 30, '#FFFFFF', None, lighting=LIGHTING_PLASTIC) # 후진등
+        # 반사판/미등
+        draw_cube(x, y, z, 250, 20, 30, '#990000', None, lighting=LIGHTING_PLASTIC)
 
-    # [신규] 천장 프레임 (테두리)
-    draw_cube(-f_tk/2, 0, Real_H, f_tk, L, f_tk, COLOR_FRAME, COLOR_FRAME_LINE) # 천장 좌측
-    draw_cube(W-f_tk/2, 0, Real_H, f_tk, L, f_tk, COLOR_FRAME, COLOR_FRAME_LINE) # 천장 우측
+    draw_tail_light(100, L+50, -chassis_h-bumper_h+20) # 좌측 후미등
+    draw_tail_light(W-350, L+50, -chassis_h-bumper_h+20) # 우측 후미등
 
-    # 2. 투명 컨테이너 벽면
-    draw_cube(0, 0, 0, W, L, Real_H, '#EEF5FF', '#666666', opacity=0.1)
 
-    # 3. 치수선 그리기 (Cone 화살표 사용)
-    OFFSET = 800 
-    def draw_arrow_dim(p1, p2, text, color='black'):
-        fig.add_trace(go.Scatter3d(
-            x=[p1[0], p2[0]], y=[p1[1], p2[1]], z=[p1[2], p2[2]],
-            mode='lines', line=dict(color=color, width=3),
-            showlegend=False, hoverinfo='skip'
-        ))
-        vec = np.array(p2) - np.array(p1)
-        length = np.linalg.norm(vec)
-        if length > 0:
-            u, v, w = vec / length
-            fig.add_trace(go.Cone(
-                x=[p2[0]], y=[p2[1]], z=[p2[2]], u=[u], v=[v], w=[w],
-                sizemode="absolute", sizeref=150, anchor="tip",
-                showscale=False, colorscale=[[0, color], [1, color]], hoverinfo='skip'
-            ))
-            fig.add_trace(go.Cone(
-                x=[p1[0]], y=[p1[1]], z=[p1[2]], u=[-u], v=[-v], w=[-w],
-                sizemode="absolute", sizeref=150, anchor="tip",
-                showscale=False, colorscale=[[0, color], [1, color]], hoverinfo='skip'
-            ))
-        mid = [(p1[0]+p2[0])/2, (p1[1]+p2[1])/2, (p1[2]+p2[2])/2]
-        fig.add_trace(go.Scatter3d(
-            x=[mid[0]], y=[mid[1]], z=[mid[2]],
-            mode='text', text=[f"<b>{text}</b>"],
-            textfont=dict(color=color, size=14, family="Arial Black"),
-            showlegend=False, hoverinfo='skip'
-        ))
+    # 3. 사실적인 바퀴 (Wheel & Tire) 디자인
+    def draw_realistic_wheel(cx, cy, cz):
+        r_tire = 320; w_tire = 180; r_rim = 200; w_rim = 120; r_hub = 60; w_hub = 40
+        steps = 36
+        theta = np.linspace(0, 2*np.pi, steps)
+        
+        # 3-1. 타이어 (검은색 고무 질감)
+        # 트레드 (옆면)
+        xt, yt, zt = [], [], []
+        for t in theta:
+            xt.extend([cx - w_tire/2, cx + w_tire/2])
+            yt.extend([cy + r_tire*np.cos(t), cy + r_tire*np.cos(t)])
+            zt.extend([cz + r_tire*np.sin(t), cz + r_tire*np.sin(t)])
+        fig.add_trace(go.Mesh3d(x=xt, y=yt, z=zt, alphahull=0, color=COLOR_TIRE, flatshading=True, lighting=LIGHTING_RUBBER, hoverinfo='skip'))
+        
+        # 측면 (안쪽/바깥쪽)
+        def draw_sidewall(x_pos, r_in, r_out):
+            y_in = [cy + r_in*np.cos(t) for t in theta]; z_in = [cz + r_in*np.sin(t) for t in theta]
+            y_out = [cy + r_out*np.cos(t) for t in theta]; z_out = [cz + r_out*np.sin(t) for t in theta]
+            # 도넛 모양으로 면 생성 (삼각형 스트립핑)
+            x_side = []; y_side = []; z_side = []
+            for i in range(steps-1):
+                x_side.extend([x_pos, x_pos, x_pos, x_pos])
+                y_side.extend([y_in[i], y_out[i], y_out[i+1], y_in[i+1]])
+                z_side.extend([z_in[i], z_out[i], z_out[i+1], z_in[i+1]])
+            # 마지막 세그먼트 연결
+            x_side.extend([x_pos, x_pos, x_pos, x_pos])
+            y_side.extend([y_in[-1], y_out[-1], y_out[0], y_in[0]])
+            z_side.extend([z_in[-1], z_out[-1], z_out[0], z_in[0]])
+            
+            i_idx = np.arange(0, len(x_side), 4); j_idx = i_idx + 1; k_idx = i_idx + 2
+            i_idx2 = np.arange(0, len(x_side), 4); j_idx2 = i_idx2 + 2; k_idx2 = i_idx2 + 3
+            fig.add_trace(go.Mesh3d(x=x_side, y=y_side, z=z_side, i=np.concatenate([i_idx, i_idx2]), j=np.concatenate([j_idx, j_idx2]), k=np.concatenate([k_idx, k_idx2]), color=COLOR_TIRE, flatshading=True, lighting=LIGHTING_RUBBER, hoverinfo='skip'))
 
-    draw_arrow_dim([0, -OFFSET, 0], [W, -OFFSET, 0], f"폭 : {int(W)}")
-    draw_arrow_dim([-OFFSET, 0, 0], [-OFFSET, L, 0], f"길이 : {int(L)}")
-    draw_arrow_dim([-OFFSET, L, 0], [-OFFSET, L, LIMIT_H], f"높이제한(최대4단) : {LIMIT_H}", color='red')
+        draw_sidewall(cx - w_tire/2, 0, r_tire) # 안쪽 면 (완전히 막음)
+        draw_sidewall(cx + w_tire/2, r_rim, r_tire) # 바깥쪽 면 (림 부분 비움)
 
-    # 높이 제한 평면 (빨간 점선)
+        # 3-2. 휠 림 & 디스크 (은색 금속 질감)
+        # 림 (안쪽으로 들어간 원통면)
+        xr, yr, zr = [], [], []
+        x_rim_pos = cx + w_tire/2 - w_rim # 림이 시작되는 안쪽 위치
+        for t in theta:
+            xr.extend([x_rim_pos, cx + w_tire/2])
+            yr.extend([cy + r_rim*np.cos(t), cy + r_rim*np.cos(t)])
+            zr.extend([cz + r_rim*np.sin(t), cz + r_rim*np.sin(t)])
+        fig.add_trace(go.Mesh3d(x=xr, y=yr, z=zr, alphahull=0, color=COLOR_WHEEL, flatshading=True, lighting=LIGHTING_METAL, hoverinfo='skip'))
+        
+        # 디스크 (림 안쪽을 막는 면)
+        yd = [cy + r_rim*np.cos(t) for t in theta] + [cy]
+        zd = [cz + r_rim*np.sin(t) for t in theta] + [cz]
+        xd = [x_rim_pos] * len(yd)
+        fig.add_trace(go.Mesh3d(x=xd, y=yd, z=zd, color=COLOR_WHEEL, flatshading=True, lighting=LIGHTING_METAL, hoverinfo='skip'))
+
+        # 3-3. 휠 허브 & 러그 너트 (돌출된 금속)
+        # 허브 (중앙 돌출 원통)
+        xh, yh, zh = [], [], []
+        x_hub_start = x_rim_pos; x_hub_end = x_rim_pos + w_hub
+        for t in theta:
+            xh.extend([x_hub_start, x_hub_end])
+            yh.extend([cy + r_hub*np.cos(t), cy + r_hub*np.cos(t)])
+            zh.extend([cz + r_hub*np.sin(t), cz + r_hub*np.sin(t)])
+        fig.add_trace(go.Mesh3d(x=xh, y=yh, z=zh, alphahull=0, color=COLOR_WHEEL, flatshading=True, lighting=LIGHTING_METAL, hoverinfo='skip'))
+        # 허브 캡 (바깥쪽 면)
+        yhc = [cy + r_hub*np.cos(t) for t in theta] + [cy]
+        zhc = [cz + r_hub*np.sin(t) for t in theta] + [cz]
+        xhc = [x_hub_end] * len(yhc)
+        fig.add_trace(go.Mesh3d(x=xhc, y=yhc, z=zhc, color=COLOR_WHEEL, flatshading=True, lighting=LIGHTING_METAL, hoverinfo='skip'))
+        
+        # 러그 너트 (허브 주변의 작은 볼트들)
+        r_nuts = (r_rim + r_hub) / 2
+        num_nuts = 8
+        theta_nuts = np.linspace(0, 2*np.pi, num_nuts, endpoint=False)
+        yn = cy + r_nuts * np.cos(theta_nuts)
+        zn = cz + r_nuts * np.sin(theta_nuts)
+        xn = [x_rim_pos + 5] * num_nuts # 디스크 면에서 살짝 튀어나오게
+        fig.add_trace(go.Scatter3d(x=xn, y=yn, z=zn, mode='markers', marker=dict(color='#888888', size=8, symbol='circle'), showlegend=False, hoverinfo='skip'))
+
+
+    wheel_z = -chassis_h - 300
+    # 앞 2축
+    draw_realistic_wheel(-80, L*0.12, wheel_z); draw_realistic_wheel(W+80, L*0.12, wheel_z)
+    draw_realistic_wheel(-80, L*0.26, wheel_z); draw_realistic_wheel(W+80, L*0.26, wheel_z)
+    # 뒤 3축
+    draw_realistic_wheel(-80, L*0.75, wheel_z); draw_realistic_wheel(W+80, L*0.75, wheel_z)
+    draw_realistic_wheel(-80, L*0.86, wheel_z); draw_realistic_wheel(W+80, L*0.86, wheel_z)
+    draw_realistic_wheel(-80, L*0.97, wheel_z); draw_realistic_wheel(W+80, L*0.97, wheel_z)
+
+
+    # 4. [제한선]
     fig.add_trace(go.Scatter3d(
         x=[0, W, W, 0, 0], y=[0, 0, L, L, 0], z=[LIMIT_H]*5,
-        mode='lines', line=dict(color='red', width=4, dash='dash'),
+        mode='lines', line=dict(color='red', width=3, dash='dash'),
         showlegend=False, hoverinfo='skip'
     ))
+    fig.add_trace(go.Scatter3d(
+        x=[W/2], y=[L/2], z=[LIMIT_H], mode='text', text=['<b>제한 1.3m</b>'],
+        textfont=dict(color='red', size=10), showlegend=False, hoverinfo='skip'
+    ))
 
-    # 4. 화물 박스 렌더링
+    # 5. [화물 박스]
     annotations = []
     for item in truck.items:
-        col = '#FF6B6B' if item.is_heavy else '#FAD7A0'
-        draw_cube(item.x, item.y, item.z, item.w, item.d, item.h, col, '#000000')
+        color = '#FF6B6B' if getattr(item, 'is_heavy', False) else '#FAD7A0'
+        # 화물 박스는 골판지 상자 느낌의 조명 적용
+        draw_cube(item.x, item.y, item.z, item.w, item.d, item.h, color, '#000000', lighting=LIGHTING_PLASTIC)
         
         fig.add_trace(go.Mesh3d(
             x=[item.x, item.x+item.w, item.x+item.w, item.x, item.x, item.x+item.w, item.x+item.w, item.x],
             y=[item.y, item.y, item.y+item.d, item.y+item.d, item.y, item.y, item.y+item.d, item.y+item.d],
             z=[item.z, item.z, item.z, item.z, item.z+item.h, item.z+item.h, item.z+item.h, item.z+item.h],
-            i=[7, 0, 0, 0, 4, 4, 6, 6, 4, 0, 3, 2], j=[3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3], k=[0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6],
+            i=[7, 0, 0, 0, 4, 4, 6, 6, 4, 0, 3, 2],
+            j=[3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3],
+            k=[0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6],
             opacity=0.0, hoverinfo='text',
             hovertext=f"<b>📦 {item.name}</b><br>규격: {int(item.w)}x{int(item.d)}x{int(item.h)}<br>중량: {int(item.weight):,}kg"
         ))
+
         annotations.append(dict(
             x=item.x + item.w/2, y=item.y + item.d/2, z=item.z + item.h/2,
             text=f"<b>{item.name}</b>",
             xanchor="center", yanchor="middle", showarrow=False,
-            font=dict(color="black", size=11), bgcolor="rgba(255,255,255,0.5)"
+            font=dict(color="black", size=10), bgcolor="rgba(255,255,255,0.4)"
         ))
 
-    # 5. 카메라 설정
+    # 6. [카메라]
     if camera_view == "top": eye = dict(x=0, y=0.01, z=2.5); up = dict(x=0, y=1, z=0)
     elif camera_view == "side": eye = dict(x=2.5, y=0, z=0.2); up = dict(x=0, y=0, z=1)
-    else: eye = dict(x=1.8, y=-1.8, z=1.0); up = dict(x=0, y=0, z=1)
+    else: eye = dict(x=1.8, y=-1.8, z=1.0); up = dict(x=0, y=0, z=1) # ISO
 
     fig.update_layout(
         scene=dict(
-            aspectmode='data', xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False),
+            aspectmode='data',
+            xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False),
             bgcolor='white', camera=dict(eye=eye, up=up), annotations=annotations
         ),
         margin=dict(l=0, r=0, b=0, t=0), height=600, uirevision=str(uuid.uuid4())
@@ -338,7 +408,7 @@ def draw_truck_3d(truck, camera_view="iso"):
     return fig
 
 # ==========================================
-# 5. 메인 UI (기존 동일 유지)
+# 5. 메인 UI
 # ==========================================
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
 st.caption("✅ 규칙 : 비용최적화 | 부피순 적재 | 회전금지 | 1.3m 제한 | 80% 지지충족 | 하중제한 준수 | 상위 10% 중량박스 빨간색 표시")
@@ -355,6 +425,7 @@ if uploaded_file:
         
         df_display = df.copy()
         
+        # 숫자 -> 문자열 변환 (왼쪽 정렬 유도)
         cols_to_format = [c for c in ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)'] if c in df_display.columns]
         for col in cols_to_format:
             df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}")
