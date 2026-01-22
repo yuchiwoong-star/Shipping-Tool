@@ -201,7 +201,7 @@ def run_optimization(all_items):
     return final_trucks
 
 # ==========================================
-# 4. 시각화 (수정됨: 후미등 위치 및 치수선 텍스트 위치 수정)
+# 4. 시각화 (수정됨: 후미등 위치 및 치수선 텍스트 스타일 수정)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -249,21 +249,20 @@ def draw_truck_3d(truck, camera_view="iso"):
     # 범퍼 (앞쪽 y=L 에 위치)
     draw_cube(-f_tk/2, L, -ch_h-bmp_h, W+f_tk, f_tk, bmp_h, '#222222') 
     
-    # [수정] 후미등 3색 구현 (위치 수정: 프레임 바깥쪽으로 이동)
+    # [수정] 후미등 3색 구현 (위치 수정: 범퍼 안쪽 양 끝으로 이동)
     # y=L 위치, z 위치 고정
     light_z = -ch_h-bmp_h+30
     light_w = 60; light_h = 20; light_d = 60
     
-    # 왼쪽 후미등 세트 (바깥쪽 -> 안쪽: 빨강 -> 주황 -> 흰색)
-    # 시작점 x를 프레임 두께 + 3개 조명 너비만큼 왼쪽으로 이동
-    left_start = -f_tk - light_w*3
+    # 왼쪽 후미등 세트 (범퍼 왼쪽 끝에서 시작: 빨강 -> 주황 -> 흰색)
+    left_start = -f_tk/2 # 범퍼 왼쪽 끝 좌표
     draw_cube(left_start, L, light_z, light_w, light_h, light_d, '#FF0000', '#990000') # 빨강 (브레이크)
     draw_cube(left_start+light_w, L, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') # 주황 (방향지시)
     draw_cube(left_start+light_w*2, L, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA') # 흰색 (후진)
 
-    # 오른쪽 후미등 세트 (안쪽 -> 바깥쪽: 흰색 -> 주황 -> 빨강)
-    # 시작점 x를 적재폭 W + 프레임 두께만큼 오른쪽으로 이동
-    right_start = W + f_tk
+    # 오른쪽 후미등 세트 (범퍼 오른쪽 끝에 맞춰 끝남: 흰색 -> 주황 -> 빨강)
+    # 범퍼 오른쪽 끝 좌표는 W + f_tk/2
+    right_start = (W + f_tk/2) - (light_w * 3) # 범퍼 오른쪽 끝에서 조명 3개 너비만큼 뺀 위치
     draw_cube(right_start, L, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA') # 흰색 (후진)
     draw_cube(right_start+light_w, L, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') # 주황 (방향지시)
     draw_cube(right_start+light_w*2, L, light_z, light_w, light_h, light_d, '#FF0000', '#990000') # 빨강 (브레이크)
@@ -282,7 +281,6 @@ def draw_truck_3d(truck, camera_view="iso"):
 
     # 3. 치수선 그리기
     OFFSET = 800
-    # [수정] 텍스트 위치를 더 바깥으로 빼기 위한 오프셋 추가
     TEXT_OFFSET = OFFSET * 1.5
     
     def draw_arrow_dim(p1, p2, text, color='black'):
@@ -306,20 +304,19 @@ def draw_truck_3d(truck, camera_view="iso"):
                 showscale=False, colorscale=[[0, color], [1, color]], hoverinfo='skip'
             ))
         
-        # [수정] 텍스트 위치 계산 로직 변경
         mid = [(p1[0]+p2[0])/2, (p1[1]+p2[1])/2, (p1[2]+p2[2])/2]
         if text.startswith("폭 :"):
-            mid[1] = -TEXT_OFFSET # y 좌표를 더 바깥으로
-            mid[2] = 0 # 높이를 0으로
+            mid[1] = -TEXT_OFFSET
+            mid[2] = 0
         elif text.startswith("길이 :"):
-            mid[0] = -TEXT_OFFSET # x 좌표를 더 바깥으로
-            mid[2] = 0 # 높이를 0으로
-        # 높이 제한 텍스트는 기존 중앙 위치 유지
-            
+            mid[0] = -TEXT_OFFSET
+            mid[2] = 0
+        
+        # [수정] 텍스트 굵기 제거(<b> 태그 삭제) 및 폰트 스타일 변경(Arial, size 12)
         fig.add_trace(go.Scatter3d(
             x=[mid[0]], y=[mid[1]], z=[mid[2]],
-            mode='text', text=[f"<b>{text}</b>"],
-            textfont=dict(color=color, size=14, family="Arial Black"),
+            mode='text', text=[text], 
+            textfont=dict(color=color, size=12, family="Arial"),
             showlegend=False, hoverinfo='skip'
         ))
 
