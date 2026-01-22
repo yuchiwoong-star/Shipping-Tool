@@ -19,7 +19,7 @@ class Box:
         self.y = 0.0
         self.z = 0.0
         self.is_heavy = False
-        self.level = 1 # 박스 적재 단수 (기본 1단)
+        self.level = 1 
     
     @property
     def volume(self):
@@ -30,7 +30,7 @@ class Truck:
         self.name = name
         self.w = float(w)
         self.h = float(h)
-        self.d = float(d) # 여기서 d는 적재함 길이(Length)를 의미
+        self.d = float(d) 
         self.max_weight = float(max_weight)
         self.cost = int(cost)
         self.items = []
@@ -42,45 +42,37 @@ class Truck:
         if self.total_weight + item.weight > self.max_weight:
             return False
         
-        # 피벗 정렬: Z(낮은순) -> Y(안쪽순) -> X(왼쪽순)
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
         
         for p in self.pivots:
             px, py, pz = p
             
-            # 1. 물리적 공간 벗어남 체크 (높이 1.3m 제한 포함)
             if (px + item.w > self.w) or (py + item.d > self.d) or (pz + item.h > self.h):
                 continue
             
-            # 2. 충돌 체크
             if self._check_collision(item, px, py, pz):
                 continue
             
-            # 3. 지지 기반 체크
             if not self._check_support(item, px, py, pz):
                 continue
             
-            # 4. 적재 단수(Level) 체크 (최대 4단)
             level = 1
-            if pz > 0.001: # 바닥이 아닌 경우 아래 박스 확인
+            if pz > 0.001: 
                 max_below_level = 0
                 for exist in self.items:
-                    # 바로 아래층에 있는 박스인지 확인 (높이 차이가 미세할 때)
                     if abs((exist.z + exist.h) - pz) < 1.0:
-                        # 겹치는 영역이 있는지 확인 (지지가 되는 박스들)
                         ox = max(0.0, min(px + item.w, exist.x + exist.w) - max(px, exist.x))
                         oy = max(0.0, min(py + item.d, exist.y + exist.d) - max(py, exist.y))
-                        if ox * oy > 0: # 겹친다면
+                        if ox * oy > 0: 
                             if exist.level > max_below_level:
                                 max_below_level = exist.level
                 level = max_below_level + 1
             
-            if level > 4: # 4단 초과 시 적재 불가
+            if level > 4: 
                 continue
 
-            # 적재 확정
             item.x, item.y, item.z = px, py, pz
-            item.level = level # 단수 저장
+            item.level = level 
             self.items.append(item)
             self.total_weight += item.weight
             fit = True
@@ -181,12 +173,9 @@ def run_optimization(all_items):
             candidates = []
             for t_name in TRUCK_DB:
                 spec = TRUCK_DB[t_name]
-                # [적용] 실제 제원보다 MARGIN_LENGTH 작은 공간으로 계산
                 effective_l = spec['l'] - MARGIN_LENGTH
-                # 높이 제한 1300mm 적용 (Truck 생성자에서 h=1300)
                 t = Truck(t_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
                 
-                # [적용] 길이(d) 기준 정렬 (긴 박스 우선)
                 test_i = sorted(rem, key=lambda x: x.d, reverse=True)
                 count = 0
                 w_sum = 0
@@ -221,7 +210,6 @@ def run_optimization(all_items):
         effective_l = spec['l'] - MARGIN_LENGTH
         start_truck = Truck(start_truck_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
         
-        # [적용] 길이(d) 기준 정렬 (긴 박스 우선)
         items_sorted = sorted(all_items, key=lambda x: x.d, reverse=True)
         for item in items_sorted:
              new_box = Box(item.name, item.w, item.h, item.d, item.weight)
@@ -421,7 +409,6 @@ def draw_truck_3d(truck, camera_view="iso"):
 # 5. 메인 UI
 # ==========================================
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
-# [수정] 규칙 텍스트 변경
 st.caption("✅ 규칙 : 비용최소화 | 부피순 적재 | 회전금지 | 1.3m 높이제한 | 80% 지지충족 | 하중제한 준수 | 상위 10% 중량박스 빨간색 표시 | 길이 10cm 여유 | 최대 4단적재")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 
@@ -516,29 +503,53 @@ if uploaded_file:
                     cnt = Counter(t_names)
                     total_cost = sum(t.cost for t in trucks)
 
-                    summary = ", ".join([f"{k} {v}대" for k,v in cnt.items()])
-                    st.success(f"✅ 분석 완료: 총 {len(trucks)}대 ({summary}) | 예상 총 운송비: {total_cost:,}원")
+                    # [수정] Dashboard Style Layout 적용
                     
-                    c1, c2, c3, _ = st.columns([1, 1, 1, 5])
-                    with c1: 
-                        if st.button("↗️ 쿼터뷰"): st.session_state['view_mode'] = 'iso'
-                    with c2: 
-                        if st.button("⬆️ 탑뷰"): st.session_state['view_mode'] = 'top'
-                    with c3: 
-                        if st.button("➡️ 사이드뷰"): st.session_state['view_mode'] = 'side'
+                    # 1. Summary Metrics
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("총 배차 차량", f"{len(trucks)}대")
+                    m2.metric("총 예상 운송비", f"{total_cost:,}원")
+                    m3.metric("총 적재 중량", f"{sum(t.total_weight for t in trucks):,.0f} kg")
                     
-                    tabs = st.tabs([t.name for t in trucks])
-                    for i, tab in enumerate(tabs):
-                        with tab:
-                            col1, col2 = st.columns([1, 4])
-                            t = trucks[i]
-                            with col1:
-                                st.markdown(f"### **{t.name}**")
-                                st.write(f"- 박스: **{len(t.items)}개**")
-                                st.write(f"- 중량: **{t.total_weight:,} kg**")
-                                st.write(f"- 비용: **{t.cost:,} 원**")
-                                with st.expander("목록 보기"): st.write(", ".join([b.name for b in t.items]))
-                            with col2:
-                                st.plotly_chart(draw_truck_3d(t, st.session_state['view_mode']), use_container_width=True)
+                    st.divider()
+
+                    # 2. View Controls & Tabs
+                    c_view, c_tabs = st.columns([1, 4])
+                    
+                    with c_view:
+                        st.markdown("##### 👁️ 뷰 모드 설정")
+                        view_mode = st.radio("시각화 모드", ["쿼터뷰(Iso)", "탑뷰(Top)", "사이드뷰(Side)"], label_visibility="collapsed")
+                        if "Iso" in view_mode: st.session_state['view_mode'] = 'iso'
+                        elif "Top" in view_mode: st.session_state['view_mode'] = 'top'
+                        else: st.session_state['view_mode'] = 'side'
+
+                    with c_tabs:
+                        tabs = st.tabs([f"{t.name}" for t in trucks])
+                        for i, tab in enumerate(tabs):
+                            with tab:
+                                t = trucks[i]
+                                # Detail Layout: Info(Left) vs Chart(Right)
+                                c_info, c_chart = st.columns([1, 3])
+                                
+                                with c_info:
+                                    st.markdown(f"#### {t.name}")
+                                    
+                                    # Load Factor Progress
+                                    weight_pct = min(1.0, t.total_weight / t.max_weight)
+                                    st.progress(weight_pct, text=f"중량 적재율: {weight_pct*100:.1f}%")
+                                    
+                                    # Stats Table
+                                    st.dataframe(pd.DataFrame({
+                                        "항목": ["박스 수", "적재 중량", "운송 비용"],
+                                        "값": [f"{len(t.items)}개", f"{t.total_weight:,.0f} kg", f"{t.cost:,} 원"]
+                                    }), hide_index=True, use_container_width=True)
+                                    
+                                    with st.expander("📦 적재 리스트 확인"):
+                                        box_data = [{"박스명": b.name, "단수": f"{b.level}단"} for b in t.items]
+                                        st.dataframe(box_data, hide_index=True)
+
+                                with c_chart:
+                                    st.plotly_chart(draw_truck_3d(t, st.session_state['view_mode']), use_container_width=True)
+
                 else: st.warning("적재 가능한 차량을 찾지 못했습니다.")
     except Exception as e: st.error(f"오류 발생: {e}")
