@@ -201,7 +201,7 @@ def run_optimization(all_items):
     return final_trucks
 
 # ==========================================
-# 4. 시각화 (수정됨: 후미등 돌출 및 측면 프레임 삭제)
+# 4. 시각화 (수정됨: 후미등 안쪽 배치 및 프레임 키움)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -232,15 +232,14 @@ def draw_truck_3d(truck, camera_view="iso"):
             fig.add_trace(go.Scatter3d(x=xe, y=ye, z=ze, mode='lines', line=dict(color=line_color, width=3), showlegend=False, hoverinfo='skip'))
 
     # 1. 트럭 프레임 및 바닥
-    ch_h = 100; f_tk = 40; bmp_h = 120; side_h = 120
+    ch_h = 100; f_tk = 40; 
+    # [수정] 범퍼 높이(프레임 역할)를 120 -> 140으로 키움
+    bmp_h = 140; 
+    side_h = 120
     
     # 메인 바닥판
     draw_cube(0, 0, -ch_h, W, L, ch_h, '#AAAAAA', COLOR_FRAME)
     
-    # [수정] 하단 사이드 프레임 (좌/우) 삭제
-    # draw_cube(-f_tk, 0, -ch_h, f_tk, L, side_h, COLOR_FRAME, COLOR_FRAME_LINE)
-    # draw_cube(W, 0, -ch_h, f_tk, L, side_h, COLOR_FRAME, COLOR_FRAME_LINE)
-
     # 앞면(운전석쪽, y=L 부근) 프레임
     draw_cube(-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) 
     draw_cube(W-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE)
@@ -249,20 +248,25 @@ def draw_truck_3d(truck, camera_view="iso"):
     # 범퍼 (앞쪽 y=L 에 위치)
     draw_cube(-f_tk/2, L, -ch_h-bmp_h, W+f_tk, f_tk, bmp_h, '#222222') 
     
-    # [수정] 후미등 3색 구현 (위치 수정: 범퍼 바깥쪽으로 돌출)
-    # y 위치를 L + f_tk 로 변경하여 범퍼 뒤에 붙도록 함
+    # [수정] 후미등 3색 구현 (위치 및 배치 수정)
+    # y 위치는 L + f_tk (범퍼 뒤에 부착)
     light_y = L + f_tk
-    light_z = -ch_h-bmp_h+30
+    # 범퍼 높이가 140으로 커졌으므로, 조명 위치도 살짝 조정
+    light_z = -ch_h-bmp_h+40 
     light_w = 60; light_h = 20; light_d = 60
     
-    # 왼쪽 후미등 세트 (범퍼 왼쪽 끝에서 시작: 빨강 -> 주황 -> 흰색)
-    left_start = -f_tk/2 
+    # [수정] 양 끝단에서 안쪽으로 들어갈 마진 설정 (150mm)
+    margin_in = 150
+
+    # 왼쪽 후미등 세트 (범퍼 왼쪽 끝 + 마진에서 시작: 빨강 -> 주황 -> 흰색)
+    left_start = -f_tk/2 + margin_in
     draw_cube(left_start, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000') # 빨강
     draw_cube(left_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') # 주황
     draw_cube(left_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA') # 흰색
 
-    # 오른쪽 후미등 세트 (범퍼 오른쪽 끝에 맞춰 끝남: 흰색 -> 주황 -> 빨강)
-    right_start = (W + f_tk/2) - (light_w * 3)
+    # 오른쪽 후미등 세트 (범퍼 오른쪽 끝 - 마진에 맞춰 끝남: 흰색 -> 주황 -> 빨강)
+    # 오른쪽 시작점 = (전체폭 + 프레임반) - 마진 - 조명3개폭
+    right_start = (W + f_tk/2) - margin_in - (light_w * 3)
     draw_cube(right_start, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA') # 흰색
     draw_cube(right_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') # 주황
     draw_cube(right_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000') # 빨강
@@ -398,6 +402,7 @@ if uploaded_file:
         
         st.dataframe(styler, use_container_width=True, hide_index=True, height=250)
 
+        # [복구] 차량 기준 정보 테이블 (삭제되었던 부분 복구)
         st.subheader("🚛 차량 기준 정보")
         
         truck_rows = []
@@ -420,6 +425,8 @@ if uploaded_file:
             {'selector': 'th', 'props': [('text-align', 'center')]},
             {'selector': 'td', 'props': [('text-align', 'center')]}
         ])
+
+        st.dataframe(st_truck, use_container_width=True, hide_index=True)
 
         if st.button("최적 배차 실행 (최소비용)", type="primary"):
             st.session_state['run_result'] = load_data(df)
