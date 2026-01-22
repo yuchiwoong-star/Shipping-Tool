@@ -50,15 +50,19 @@ class Truck:
         for p in self.pivots:
             px, py, pz = p
             
+            # 1. 물리적 공간 벗어남 체크 (높이 1.3m 제한 포함)
             if (px + item.w > self.w) or (py + item.d > self.d) or (pz + item.h > self.h):
                 continue
             
+            # 2. 충돌 체크
             if self._check_collision(item, px, py, pz):
                 continue
             
+            # 3. 지지 기반 체크
             if not self._check_support(item, px, py, pz):
                 continue
             
+            # 4. 적재 단수(Level) 체크 (최대 4단)
             level = 1
             if pz > 0.001: 
                 max_below_level = 0
@@ -83,6 +87,7 @@ class Truck:
         
         if fit:
             self.pivots.append([item.x + item.w, item.y, item.z])
+            # [규칙 적용] 길이 방향 피벗 생성 시 간격 추가
             self.pivots.append([item.x, item.y + item.d + BOX_GAP_L, item.z])
             self.pivots.append([item.x, item.y, item.z + item.h])
         return fit
@@ -126,7 +131,7 @@ def load_data(df):
     items = []
     try:
         # 컬럼명 정규화 (공백 제거)
-        df.columns = [c.strip() for c in df.columns]
+        df.columns = [str(c).strip() for c in df.columns]
         
         weight_col = next((c for c in df.columns if '중량' in c), None)
         if weight_col:
@@ -146,7 +151,6 @@ def load_data(df):
         h_col = next((c for c in df.columns if '높이' in c), None)
         l_col = next((c for c in df.columns if '길이' in c), None)
 
-        # 필수 컬럼이 하나라도 없으면 빈 리스트 반환
         if not (w_col and h_col and l_col):
             return []
 
@@ -172,6 +176,7 @@ def load_data(df):
     return items
 
 def run_optimization(all_items):
+    # [설정] 차량 길이 여유 20cm (200mm)
     MARGIN_LENGTH = 200 
 
     def solve_remaining_greedy(current_items):
@@ -427,26 +432,32 @@ if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
 if uploaded_file:
     try:
-        # [수정] 파일 로딩 로직 강화 (인코딩/엔진 자동 감지)
         df = None
+        # [수정] 파일 로딩 로직 강화 (seek(0) 추가)
         if uploaded_file.name.lower().endswith('.csv'):
             encodings = ['utf-8', 'cp949', 'euc-kr', 'latin1']
             for enc in encodings:
                 try:
-                    uploaded_file.seek(0)
+                    uploaded_file.seek(0) # 커서 초기화
                     df = pd.read_csv(uploaded_file, encoding=enc)
                     break
-                except UnicodeDecodeError:
+                except Exception:
                     continue
         else:
             try:
+                uploaded_file.seek(0)
                 df = pd.read_excel(uploaded_file, engine='openpyxl')
-            except:
-                df = pd.read_excel(uploaded_file) # 기본 엔진 시도
+            except Exception:
+                uploaded_file.seek(0) # 커서 초기화 후 재시도
+                try:
+                    df = pd.read_excel(uploaded_file)
+                except:
+                    pass
 
         if df is None:
             st.error("파일을 읽을 수 없습니다. (지원되지 않는 형식이거나 인코딩 오류)")
         else:
+            # 컬럼명 정규화
             df.columns = [str(c).strip() for c in df.columns]
             
             st.subheader(f"📋 데이터 확인 ({len(df)}건)")
