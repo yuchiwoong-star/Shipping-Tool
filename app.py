@@ -84,48 +84,63 @@ class Truck:
 # ==========================================
 st.set_page_config(layout="wide", page_title="출하박스 적재 최적화 시스템")
 
-# [수정] 차량 높이(real_h)를 2350 -> 1800으로 변경
+# [수정] 차량 높이(real_h)를 1800 -> 2000으로 변경
 TRUCK_DB = {
-    "1톤":   {"w": 1600, "real_h": 1800, "l": 2800,  "weight": 1490,  "cost": 78000},
-    "2.5톤": {"w": 1900, "real_h": 1800, "l": 4200,  "weight": 3490,  "cost": 110000},
-    "5톤":   {"w": 2100, "real_h": 1800, "l": 6200,  "weight": 6900,  "cost": 133000},
-    "8톤":   {"w": 2350, "real_h": 1800, "l": 7300,  "weight": 9490,  "cost": 153000},
-    "11톤":  {"w": 2350, "real_h": 1800, "l": 9200,  "weight": 14900, "cost": 188000},
-    "15톤":  {"w": 2350, "real_h": 1800, "l": 10200, "weight": 16900, "cost": 211000},
-    "18톤":  {"w": 2350, "real_h": 1800, "l": 10200, "weight": 20900, "cost": 242000},
-    "22톤":  {"w": 2350, "real_h": 1800, "l": 10200, "weight": 26000, "cost": 308000},
+    "1톤":   {"w": 1600, "real_h": 2000, "l": 2800,  "weight": 1490,  "cost": 78000},
+    "2.5톤": {"w": 1900, "real_h": 2000, "l": 4200,  "weight": 3490,  "cost": 110000},
+    "5톤":   {"w": 2100, "real_h": 2000, "l": 6200,  "weight": 6900,  "cost": 133000},
+    "8톤":   {"w": 2350, "real_h": 2000, "l": 7300,  "weight": 9490,  "cost": 153000},
+    "11톤":  {"w": 2350, "real_h": 2000, "l": 9200,  "weight": 14900, "cost": 188000},
+    "15톤":  {"w": 2350, "real_h": 2000, "l": 10200, "weight": 16900, "cost": 211000},
+    "18톤":  {"w": 2350, "real_h": 2000, "l": 10200, "weight": 20900, "cost": 242000},
+    "22톤":  {"w": 2350, "real_h": 2000, "l": 10200, "weight": 26000, "cost": 308000},
 }
 
 def load_data(df):
     items = []
     try:
-        weights = pd.to_numeric(df['중량'], errors='coerce').dropna().tolist()
-        if weights:
-            sorted_weights = sorted(weights, reverse=True)
-            top_n = math.ceil(len(weights) * 0.1)
-            cutoff_index = max(0, top_n - 1)
-            heavy_threshold = sorted_weights[cutoff_index]
+        # 컬럼명에 단위가 있을 경우와 없을 경우를 모두 처리하기 위해 유연하게 읽음
+        # 데이터프레임의 컬럼을 정규화하여 처리
+        cols = {c: c for c in df.columns}
+        
+        # 중량 컬럼 찾기
+        weight_col = next((c for c in df.columns if '중량' in c), None)
+        if weight_col:
+            weights = pd.to_numeric(df[weight_col], errors='coerce').dropna().tolist()
+            if weights:
+                sorted_weights = sorted(weights, reverse=True)
+                top_n = math.ceil(len(weights) * 0.1)
+                cutoff_index = max(0, top_n - 1)
+                heavy_threshold = sorted_weights[cutoff_index]
+            else:
+                heavy_threshold = float('inf')
         else:
             heavy_threshold = float('inf')
-    except:
-        heavy_threshold = float('inf')
 
-    for index, row in df.iterrows():
-        try:
-            name = str(row['박스번호'])
-            w = float(row['폭'])
-            h = float(row['높이'])
-            l = float(row['길이'])
-            weight = float(row['중량'])
-            
-            box = Box(name, w, h, l, weight)
-            if weight >= heavy_threshold and weight > 0:
-                box.is_heavy = True
-            else:
-                box.is_heavy = False
-            items.append(box)
-        except:
-            continue
+        # 컬럼 매핑 찾기
+        name_col = next((c for c in df.columns if '박스' in c or '번호' in c), None)
+        w_col = next((c for c in df.columns if '폭' in c), None)
+        h_col = next((c for c in df.columns if '높이' in c), None)
+        l_col = next((c for c in df.columns if '길이' in c), None)
+
+        for index, row in df.iterrows():
+            try:
+                name = str(row[name_col]) if name_col else f"Box-{index}"
+                w = float(row[w_col])
+                h = float(row[h_col])
+                l = float(row[l_col])
+                weight = float(row[weight_col])
+                
+                box = Box(name, w, h, l, weight)
+                if weight >= heavy_threshold and weight > 0:
+                    box.is_heavy = True
+                else:
+                    box.is_heavy = False
+                items.append(box)
+            except:
+                continue
+    except:
+        pass
     return items
 
 def run_optimization(all_items):
@@ -202,7 +217,7 @@ def run_optimization(all_items):
     return final_trucks
 
 # ==========================================
-# 4. 시각화 (수정됨: 프레임 높이 1800 적용됨)
+# 4. 시각화
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -235,7 +250,6 @@ def draw_truck_3d(truck, camera_view="iso"):
     # 1. 트럭 프레임 및 바닥
     ch_h = 100; f_tk = 40; 
     bmp_h = 140; 
-    side_h = 120
     
     # 메인 바닥판
     draw_cube(0, 0, -ch_h, W, L, ch_h, '#AAAAAA', COLOR_FRAME)
@@ -383,9 +397,23 @@ if uploaded_file:
         
         df_display = df.copy()
         
-        cols_to_format = [c for c in ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)'] if c in df_display.columns]
+        # [수정] 데이터 테이블 컬럼명에 단위 추가 및 매핑
+        # 입력 파일의 컬럼명에 따라 매핑 (박스번호, 폭, 높이, 길이, 중량)
+        rename_map = {}
+        for c in df_display.columns:
+            if '박스' in c or '번호' in c: rename_map[c] = '박스번호'
+            elif '폭' in c: rename_map[c] = '폭 (mm)'
+            elif '높이' in c: rename_map[c] = '높이 (mm)'
+            elif '길이' in c: rename_map[c] = '길이 (mm)'
+            elif '중량' in c: rename_map[c] = '중량 (kg)'
+        
+        df_display = df_display.rename(columns=rename_map)
+        
+        # [수정] 1,000 단위 콤마 포맷팅 적용
+        cols_to_format = ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)']
         for col in cols_to_format:
-            df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}")
+            if col in df_display.columns:
+                df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "")
         
         if '박스번호' in df_display.columns:
             df_display['박스번호'] = df_display['박스번호'].astype(str)
@@ -396,7 +424,7 @@ if uploaded_file:
             {'selector': 'td', 'props': [('text-align', 'center')]}
         ])
         
-        # [수정] column_config 적용으로 두 테이블 열 너비 강제 통일
+        # [수정] column_config를 사용하여 모든 열 너비 'medium'으로 통일
         st.dataframe(
             styler, 
             use_container_width=True, 
@@ -416,11 +444,11 @@ if uploaded_file:
                 "적재폭 (mm)": spec['w'],
                 "적재길이 (mm)": spec['l'],
                 "허용하중 (kg)": spec['weight'],
-                "운송단가": spec['cost']
+                "운송단가 (원)": spec['cost'] # [수정] 운송단가 -> 운송단가 (원) 변경
             })
         df_truck = pd.DataFrame(truck_rows)
         
-        format_cols_truck = ['적재폭 (mm)', '적재길이 (mm)', '허용하중 (kg)', '운송단가']
+        format_cols_truck = ['적재폭 (mm)', '적재길이 (mm)', '허용하중 (kg)', '운송단가 (원)']
         for col in format_cols_truck:
              df_truck[col] = df_truck[col].apply(lambda x: f"{x:,.0f}")
         
@@ -430,7 +458,7 @@ if uploaded_file:
             {'selector': 'td', 'props': [('text-align', 'center')]}
         ])
 
-        # [수정] column_config 적용으로 두 테이블 열 너비 강제 통일
+        # [수정] column_config를 사용하여 모든 열 너비 'medium'으로 통일
         st.dataframe(
             st_truck, 
             use_container_width=True, 
