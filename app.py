@@ -139,8 +139,8 @@ def load_data(df):
     return items
 
 def run_optimization(all_items):
-    # [수정] 30cm(300mm) 여유 확보를 위해 Truck 생성 시 length에서 차감
-    MARGIN_LENGTH = 300 
+    # [수정] 10cm(100mm) 여유 확보로 변경
+    MARGIN_LENGTH = 100 
 
     def solve_remaining_greedy(current_items):
         used = []
@@ -149,7 +149,7 @@ def run_optimization(all_items):
             candidates = []
             for t_name in TRUCK_DB:
                 spec = TRUCK_DB[t_name]
-                # [적용] 실제 제원보다 300mm 작은 공간으로 계산
+                # [적용] 실제 제원보다 MARGIN_LENGTH 작은 공간으로 계산
                 effective_l = spec['l'] - MARGIN_LENGTH
                 t = Truck(t_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
                 
@@ -184,7 +184,7 @@ def run_optimization(all_items):
     
     for start_truck_name in TRUCK_DB:
         spec = TRUCK_DB[start_truck_name]
-        # [적용] 실제 제원보다 300mm 작은 공간으로 계산
+        # [적용] 실제 제원보다 MARGIN_LENGTH 작은 공간으로 계산
         effective_l = spec['l'] - MARGIN_LENGTH
         start_truck = Truck(start_truck_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
         
@@ -387,8 +387,8 @@ def draw_truck_3d(truck, camera_view="iso"):
 # 5. 메인 UI
 # ==========================================
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
-# [수정] 규칙에 '길이 30cm 여유' 추가
-st.caption("✅ 규칙 : 비용최적화 | 부피순 적재 | 회전금지 | 1.3m 제한 | 80% 지지충족 | 하중제한 준수 | 상위 10% 중량박스 빨간색 표시 | 길이 30cm 여유")
+# [수정] 규칙 텍스트 변경
+st.caption("✅ 규칙 : 비용최소화 | 부피순 적재 | 회전금지 | 1.3m 높이제한 | 80% 지지충족 | 하중제한 준수 | 상위 10% 중량박스 빨간색 표시 | 길이 10cm 여유")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
