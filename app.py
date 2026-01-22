@@ -84,15 +84,16 @@ class Truck:
 # ==========================================
 st.set_page_config(layout="wide", page_title="출하박스 적재 최적화 시스템")
 
+# [수정] 차량 높이(real_h)를 2350 -> 1800으로 변경
 TRUCK_DB = {
-    "1톤":   {"w": 1600, "real_h": 2350, "l": 2800,  "weight": 1490,  "cost": 78000},
-    "2.5톤": {"w": 1900, "real_h": 2350, "l": 4200,  "weight": 3490,  "cost": 110000},
-    "5톤":   {"w": 2100, "real_h": 2350, "l": 6200,  "weight": 6900,  "cost": 133000},
-    "8톤":   {"w": 2350, "real_h": 2350, "l": 7300,  "weight": 9490,  "cost": 153000},
-    "11톤":  {"w": 2350, "real_h": 2350, "l": 9200,  "weight": 14900, "cost": 188000},
-    "15톤":  {"w": 2350, "real_h": 2350, "l": 10200, "weight": 16900, "cost": 211000},
-    "18톤":  {"w": 2350, "real_h": 2350, "l": 10200, "weight": 20900, "cost": 242000},
-    "22톤":  {"w": 2350, "real_h": 2350, "l": 10200, "weight": 26000, "cost": 308000},
+    "1톤":   {"w": 1600, "real_h": 1800, "l": 2800,  "weight": 1490,  "cost": 78000},
+    "2.5톤": {"w": 1900, "real_h": 1800, "l": 4200,  "weight": 3490,  "cost": 110000},
+    "5톤":   {"w": 2100, "real_h": 1800, "l": 6200,  "weight": 6900,  "cost": 133000},
+    "8톤":   {"w": 2350, "real_h": 1800, "l": 7300,  "weight": 9490,  "cost": 153000},
+    "11톤":  {"w": 2350, "real_h": 1800, "l": 9200,  "weight": 14900, "cost": 188000},
+    "15톤":  {"w": 2350, "real_h": 1800, "l": 10200, "weight": 16900, "cost": 211000},
+    "18톤":  {"w": 2350, "real_h": 1800, "l": 10200, "weight": 20900, "cost": 242000},
+    "22톤":  {"w": 2350, "real_h": 1800, "l": 10200, "weight": 26000, "cost": 308000},
 }
 
 def load_data(df):
@@ -201,7 +202,7 @@ def run_optimization(all_items):
     return final_trucks
 
 # ==========================================
-# 4. 시각화 (수정됨: 후미등 안쪽 배치 및 프레임 키움)
+# 4. 시각화 (수정됨: 프레임 높이 1800 적용됨)
 # ==========================================
 def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
@@ -383,7 +384,6 @@ if uploaded_file:
         df_display = df.copy()
         
         cols_to_format = [c for c in ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)'] if c in df_display.columns]
-        # [수정] 1,000 단위 콤마 서식 적용 (문자열 변환)
         for col in cols_to_format:
             df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}")
         
@@ -396,10 +396,17 @@ if uploaded_file:
             {'selector': 'td', 'props': [('text-align', 'center')]}
         ])
         
-        # [수정] use_container_width=True 로 열 너비 균등 및 꽉 채우기
-        st.dataframe(styler, use_container_width=True, hide_index=True, height=250)
+        # [수정] column_config 적용으로 두 테이블 열 너비 강제 통일
+        st.dataframe(
+            styler, 
+            use_container_width=True, 
+            hide_index=True, 
+            height=250,
+            column_config={
+                c: st.column_config.Column(width="medium") for c in df_display.columns
+            }
+        )
 
-        # [복구] 차량 기준 정보 테이블
         st.subheader("🚛 차량 기준 정보")
         
         truck_rows = []
@@ -414,7 +421,6 @@ if uploaded_file:
         df_truck = pd.DataFrame(truck_rows)
         
         format_cols_truck = ['적재폭 (mm)', '적재길이 (mm)', '허용하중 (kg)', '운송단가']
-        # [수정] 1,000 단위 콤마 서식 적용
         for col in format_cols_truck:
              df_truck[col] = df_truck[col].apply(lambda x: f"{x:,.0f}")
         
@@ -424,8 +430,15 @@ if uploaded_file:
             {'selector': 'td', 'props': [('text-align', 'center')]}
         ])
 
-        # [수정] use_container_width=True 로 열 너비 균등 및 꽉 채우기
-        st.dataframe(st_truck, use_container_width=True, hide_index=True)
+        # [수정] column_config 적용으로 두 테이블 열 너비 강제 통일
+        st.dataframe(
+            st_truck, 
+            use_container_width=True, 
+            hide_index=True,
+            column_config={
+                c: st.column_config.Column(width="medium") for c in df_truck.columns
+            }
+        )
 
         if st.button("최적 배차 실행 (최소비용)", type="primary"):
             st.session_state['run_result'] = load_data(df)
