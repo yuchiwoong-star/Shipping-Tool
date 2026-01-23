@@ -7,29 +7,30 @@ import uuid
 from itertools import groupby
 
 # ==========================================
-# 1. 커스텀 물리 엔진 (기존 로직 100% 유지)
+# 1. 커스텀 물리 엔진 (수정: d -> l 변수명 통일)
 # ==========================================
 class Box:
-    __slots__ = ['name', 'w', 'h', 'd', 'weight', 'x', 'y', 'z', 'is_heavy', 'level', 'vol']
-    def __init__(self, name, w, h, d, weight):
+    # [수정] d(Depth)를 l(Length)로 변경하여 데이터 컬럼명과 통일
+    __slots__ = ['name', 'w', 'h', 'l', 'weight', 'x', 'y', 'z', 'is_heavy', 'level', 'vol']
+    def __init__(self, name, w, h, l, weight):
         self.name = name
         self.w = float(w)
         self.h = float(h)
-        self.d = float(d)
+        self.l = float(l) # [수정] Depth -> Length
         self.weight = float(weight)
         self.x = 0.0
         self.y = 0.0
         self.z = 0.0
         self.is_heavy = False
         self.level = 1 
-        self.vol = self.w * self.h * self.d
+        self.vol = self.w * self.h * self.l
 
 class Truck:
-    def __init__(self, name, w, h, d, max_weight, cost):
+    def __init__(self, name, w, h, l, max_weight, cost):
         self.name = name
         self.w = float(w)
         self.h = float(h)
-        self.d = float(d) 
+        self.l = float(l) # [수정] Depth -> Length (차량 길이)
         self.max_weight = float(max_weight)
         self.cost = int(cost)
         self.items = []
@@ -54,8 +55,8 @@ class Truck:
         for p in self.pivots:
             px, py, pz = p
             
-            # 1. 경계 검사
-            if (px + item.w > self.w) or (py + item.d > self.d) or (pz + item.h > self.h):
+            # 1. 경계 검사 [수정] item.d -> item.l, self.d -> self.l
+            if (px + item.w > self.w) or (py + item.l > self.l) or (pz + item.h > self.h):
                 continue
             
             # 2. 충돌 검사
@@ -70,8 +71,9 @@ class Truck:
                 max_below_level = 0
                 for exist in self.items:
                     if abs((exist.z + exist.h) - pz) < 1.0:
+                        # [수정] exist.d -> exist.l, item.d -> item.l
                         if (px < exist.x + exist.w and px + item.w > exist.x and
-                            py < exist.y + exist.d and py + item.d > exist.y):
+                            py < exist.y + exist.l and py + item.l > exist.y):
                             if exist.level > max_below_level:
                                 max_below_level = exist.level
                 fit_level = max_below_level + 1
@@ -92,33 +94,37 @@ class Truck:
             
             self.pivots.remove(best_pivot)
             
-            # 새 피벗 생성
+            # 새 피벗 생성 [수정] item.d -> item.l
             self.pivots.append([item.x + item.w, item.y, item.z])
-            self.pivots.append([item.x, item.y + item.d + BOX_GAP_L, item.z])
+            self.pivots.append([item.x, item.y + item.l + BOX_GAP_L, item.z])
             self.pivots.append([item.x, item.y, item.z + item.h])
             return True
             
         return False
 
     def _check_collision_fast(self, item, x, y, z):
-        iw, id_, ih = item.w, item.d, item.h
+        # [수정] id_(depth) -> il (length)
+        iw, il, ih = item.w, item.l, item.h
         for exist in self.items:
             if not (z < exist.z + exist.h and z + ih > exist.z):
                 continue
+            # [수정] exist.d -> exist.l
             if (x < exist.x + exist.w and x + iw > exist.x and
-                y < exist.y + exist.d and y + id_ > exist.y):
+                y < exist.y + exist.l and y + il > exist.y):
                 return True
         return False
 
     def _check_support_fast(self, item, x, y, z):
         support_area = 0.0
-        item_area = item.w * item.d
+        # [수정] item.d -> item.l
+        item_area = item.w * item.l
         required = item_area * 0.8
         
         for exist in self.items:
             if abs((exist.z + exist.h) - z) < 1.0:
                 ox = max(0.0, min(x + item.w, exist.x + exist.w) - max(x, exist.x))
-                oy = max(0.0, min(y + item.d, exist.y + exist.d) - max(y, exist.y))
+                # [수정] item.d -> item.l, exist.d -> exist.l
+                oy = max(0.0, min(y + item.l, exist.y + exist.l) - max(y, exist.y))
                 area = ox * oy
                 if area > 0:
                     support_area += area
@@ -126,7 +132,7 @@ class Truck:
         return support_area >= required
 
 # ==========================================
-# 2. 설정 및 데이터
+# 2. 설정 및 데이터 (수정: 예외처리 강화)
 # ==========================================
 st.set_page_config(layout="wide", page_title="출하박스 적재 최적화 시스템")
 
@@ -143,54 +149,68 @@ TRUCK_DB = {
 
 def load_data(df):
     items = []
+    error_logs = [] # [수정] 오류 로깅 추가
+    
+    # 필수 컬럼 찾기
+    cols = df.columns
+    name_col = next((c for c in cols if '박스' in c or '번호' in c), None)
+    w_col = next((c for c in cols if '폭' in c), None)
+    h_col = next((c for c in cols if '높이' in c), None)
+    l_col = next((c for c in cols if '길이' in c), None)
+    weight_col = next((c for c in cols if '중량' in c), None)
+
+    # 필수 컬럼 검증
+    if not (w_col and h_col and l_col and weight_col):
+        return [], ["필수 컬럼(폭, 높이, 길이, 중량) 중 일부가 누락되었습니다."]
+
+    # 중량 기준점(Top 10%) 계산
+    heavy_threshold = float('inf')
     try:
-        cols = {c: c for c in df.columns}
-        weight_col = next((c for c in df.columns if '중량' in c), None)
-        
-        heavy_threshold = float('inf')
-        if weight_col:
-            weights = pd.to_numeric(df[weight_col], errors='coerce').dropna().tolist()
-            if weights:
-                sorted_weights = sorted(weights, reverse=True)
-                top_n = math.ceil(len(weights) * 0.1)
-                heavy_threshold = sorted_weights[max(0, top_n - 1)]
-
-        name_col = next((c for c in df.columns if '박스' in c or '번호' in c), None)
-        w_col = next((c for c in df.columns if '폭' in c), None)
-        h_col = next((c for c in df.columns if '높이' in c), None)
-        l_col = next((c for c in df.columns if '길이' in c), None)
-
-        for index, row in df.iterrows():
-            try:
-                name = str(row[name_col]) if name_col else f"Box-{index}"
-                w = float(row[w_col])
-                h = float(row[h_col])
-                l = float(row[l_col])
-                weight = float(row[weight_col])
-                
-                box = Box(name, w, h, l, weight)
-                if weight >= heavy_threshold and weight > 0:
-                    box.is_heavy = True
-                items.append(box)
-            except:
-                continue
+        weights = pd.to_numeric(df[weight_col], errors='coerce').dropna().tolist()
+        if weights:
+            sorted_weights = sorted(weights, reverse=True)
+            top_n = math.ceil(len(weights) * 0.1)
+            heavy_threshold = sorted_weights[max(0, top_n - 1)]
     except:
-        pass
-    return items
+        pass # 중량 계산 실패 시 하이라이팅만 안됨
+
+    # 데이터 순회
+    for index, row in df.iterrows():
+        try:
+            # 값 변환 및 유효성 체크
+            name = str(row[name_col]) if name_col else f"Box-{index}"
+            w = float(row[w_col])
+            h = float(row[h_col])
+            l = float(row[l_col])
+            weight = float(row[weight_col])
+            
+            if w <= 0 or h <= 0 or l <= 0 or weight <= 0:
+                raise ValueError("0 또는 음수 값")
+
+            box = Box(name, w, h, l, weight)
+            if weight >= heavy_threshold and weight > 0:
+                box.is_heavy = True
+            items.append(box)
+            
+        except Exception as e:
+            # [수정] 실패한 행을 기록
+            error_logs.append(f"행 {index+2} 오류: {str(e)}")
+            continue
+
+    return items, error_logs
 
 def run_optimization(all_items):
     MARGIN_LENGTH = 200 
 
-    # [유지] 하이브리드 정렬 (장축 우선 -> 폭 우선 -> 길이 우선)
+    # [수정] x.d -> x.l
     def get_hybrid_sorted_items(items_to_sort):
         return sorted(items_to_sort, key=lambda x: (
-            1 if x.d >= 2200 else 0,
+            1 if x.l >= 2200 else 0,
             x.w,
-            x.d,
+            x.l,
             x.weight
         ), reverse=True)
 
-    # [유지] Mound Sort (무게 밸런싱)
     def mound_sort_group(group_items):
         s_items = sorted(group_items, key=lambda x: x.weight)
         result = [None] * len(s_items)
@@ -200,10 +220,12 @@ def run_optimization(all_items):
             else: result[right] = item; right -= 1
         return result
 
+    # [수정] x.d -> x.l
     def get_balanced_sorted_items(items_to_sort):
         primary_sorted = get_hybrid_sorted_items(items_to_sort)
         final_list = []
-        for k, g in groupby(primary_sorted, key=lambda x: (x.w, x.h, x.d)):
+        # groupby 키도 l로 변경
+        for k, g in groupby(primary_sorted, key=lambda x: (x.w, x.h, x.l)):
             group_list = list(g)
             if len(group_list) > 2: final_list.extend(mound_sort_group(group_list))
             else: final_list.extend(sorted(group_list, key=lambda x: x.weight, reverse=True))
@@ -228,10 +250,12 @@ def run_optimization(all_items):
             rem = get_balanced_sorted_items(rem)
 
             for t_name, spec in candidates:
+                # [수정] spec['l']은 이제 Truck의 l 속성으로 전달됨 (매칭 완료)
                 t = Truck(t_name, spec['w'], 1300, spec['l'] - MARGIN_LENGTH, spec['weight'], spec['cost'])
                 count = 0; w_sum = 0
                 for item in rem:
-                    new_box = Box(item.name, item.w, item.h, item.d, item.weight)
+                    # [수정] item.d -> item.l
+                    new_box = Box(item.name, item.w, item.h, item.l, item.weight)
                     new_box.is_heavy = item.is_heavy
                     if t.put_item(new_box):
                         count += 1; w_sum += item.weight
@@ -261,9 +285,11 @@ def run_optimization(all_items):
         spec = TRUCK_DB[start_truck_name]
         if total_all_weight > 15000 and spec['weight'] < 4000: continue
 
+        # [수정] spec['l']
         start_truck = Truck(start_truck_name, spec['w'], 1300, spec['l'] - MARGIN_LENGTH, spec['weight'], spec['cost'])
         for item in sorted_all_items:
-             new_box = Box(item.name, item.w, item.h, item.d, item.weight)
+             # [수정] item.l
+             new_box = Box(item.name, item.w, item.h, item.l, item.weight)
              new_box.is_heavy = item.is_heavy
              start_truck.put_item(new_box)
         
@@ -287,10 +313,8 @@ def run_optimization(all_items):
     
     final_trucks = []
     if best_solution:
-        # [수정] 톤수 오름차순(작은 차 -> 큰 차) 정렬
         best_solution.sort(key=lambda t: t.max_weight)
         for idx, t in enumerate(best_solution):
-            # [수정] 이름 포맷 변경: [1] 5톤, [2] 11톤 ...
             t.name = f"[{idx+1}] {t.name}"
             final_trucks.append(t)
     return final_trucks
@@ -300,7 +324,6 @@ def run_optimization(all_items):
 # ==========================================
 def draw_truck_3d(truck):
     fig = go.Figure()
-    # 이름 파싱 ([1] 5톤 -> 5톤)
     original_name = truck.name.split('] ')[1].split(' (')[0] if ']' in truck.name else truck.name
     spec = TRUCK_DB.get(original_name, TRUCK_DB["5톤"])
     W, L, Real_H = spec['w'], spec['l'], spec['real_h']
@@ -310,7 +333,7 @@ def draw_truck_3d(truck):
     COLOR_FRAME = '#555555' 
     COLOR_FRAME_LINE = '#333333'
 
-    # [수정] draw_cube에 hovertext 인자 추가 (툴팁 Fix)
+    # x, y, z, w, l, h
     def draw_cube(x, y, z, w, l, h, face_color, line_color=None, opacity=1.0, hovertext=None):
         hover_info = 'text' if hovertext else 'skip'
         fig.add_trace(go.Mesh3d(
@@ -376,16 +399,15 @@ def draw_truck_3d(truck):
     annotations = []
     for item in truck.items:
         col = '#FF6B6B' if item.is_heavy else '#FAD7A0'
-        hover_text = f"<b>📦 {item.name}</b><br>규격: {int(item.w)}x{int(item.d)}x{int(item.h)}<br>중량: {int(item.weight):,}kg<br>적재단수: {item.level}단"
+        # [수정] item.d -> item.l
+        hover_text = f"<b>📦 {item.name}</b><br>규격: {int(item.w)}x{int(item.l)}x{int(item.h)}<br>중량: {int(item.weight):,}kg<br>적재단수: {item.level}단"
         
-        # [수정] draw_cube에 hovertext 직접 전달하여 툴팁 활성화
-        draw_cube(item.x, item.y, item.z, item.w, item.d, item.h, col, '#000000', hovertext=hover_text)
+        # [수정] item.d -> item.l
+        draw_cube(item.x, item.y, item.z, item.w, item.l, item.h, col, '#000000', hovertext=hover_text)
         
-        annotations.append(dict(x=item.x + item.w/2, y=item.y + item.d/2, z=item.z + item.h/2, text=f"<b>{item.name}</b>", xanchor="center", yanchor="middle", showarrow=False, font=dict(color="black", size=11), bgcolor="rgba(255,255,255,0.5)"))
+        annotations.append(dict(x=item.x + item.w/2, y=item.y + item.l/2, z=item.z + item.h/2, text=f"<b>{item.name}</b>", xanchor="center", yanchor="middle", showarrow=False, font=dict(color="black", size=11), bgcolor="rgba(255,255,255,0.5)"))
 
-    # 기본값: 쿼터뷰(Iso)
     eye = dict(x=-1.8, y=-1.8, z=1.2); up = dict(x=0, y=0, z=1)
-
     fig.update_layout(scene=dict(aspectmode='data', xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False), bgcolor='white', camera=dict(eye=eye, up=up), annotations=annotations), margin=dict(l=0, r=0, b=0, t=0), height=600, uirevision=str(uuid.uuid4()))
     return fig
 
@@ -427,11 +449,20 @@ if uploaded_file:
         st.dataframe(df_truck, use_container_width=True, hide_index=True, column_config={c: st.column_config.Column(width="medium") for c in df_truck.columns})
 
         if st.button("최적 배차 실행 (최소비용)", type="primary"):
-            st.session_state['run_result'] = load_data(df)
+            # [수정] load_data가 items와 errors 두 개를 반환함
+            items, errors = load_data(df)
+            
+            # 오류 로그가 있으면 표시
+            if errors:
+                with st.expander(f"⚠️ 데이터 로드 경고 ({len(errors)}건)", expanded=False):
+                    for err in errors: st.write(err)
+            
+            st.session_state['run_result'] = items
             
         if 'run_result' in st.session_state:
             items = st.session_state['run_result']
-            if not items: st.error("데이터 변환 실패.")
+            if not items: 
+                st.error("유효한 적재 데이터가 없습니다. 파일을 확인해주세요.")
             else:
                 trucks = run_optimization(items)
                 if trucks:
@@ -443,16 +474,16 @@ if uploaded_file:
                     m3.metric("총 적재 중량", f"{sum(t.total_weight for t in trucks):,.0f} kg")
                     st.divider()
 
-                    # [수정] 컨트롤 패널 삭제 -> 바로 탭 표시
                     tabs = st.tabs([f"{t.name}" for t in trucks])
                     for i, tab in enumerate(tabs):
                         with tab:
                             t = trucks[i]
-                            c_info, c_chart = st.columns([1, 3]) # 레이아웃 비율
+                            c_info, c_chart = st.columns([1, 3])
                             with c_info:
                                 st.markdown(f"#### {t.name}")
                                 limit_h = 1300
-                                truck_limit_vol = t.w * t.d * limit_h 
+                                # [수정] t.d -> t.l
+                                truck_limit_vol = t.w * t.l * limit_h 
                                 used_vol = sum([b.vol for b in t.items])
                                 vol_pct = min(1.0, used_vol / truck_limit_vol) if truck_limit_vol > 0 else 0
                                 weight_pct = min(1.0, t.total_weight / t.max_weight)
@@ -462,7 +493,8 @@ if uploaded_file:
                                 st.divider()
 
                                 st.markdown("##### ⚖️ 무게 분포 (4분면)")
-                                mid_y = t.d / 2; mid_x = t.w / 2  
+                                # [수정] t.d -> t.l
+                                mid_y = t.l / 2; mid_x = t.w / 2  
                                 q_front_left = q_front_right = q_rear_left = q_rear_right = 0.0
                                 
                                 def calc_overlap(b_x1, b_x2, b_y1, b_y2, q_x1, q_x2, q_y1, q_y2):
@@ -472,14 +504,17 @@ if uploaded_file:
 
                                 for item in t.items:
                                     b_x1, b_x2 = item.x, item.x + item.w
-                                    b_y1, b_y2 = item.y, item.y + item.d
+                                    # [수정] item.d -> item.l
+                                    b_y1, b_y2 = item.y, item.y + item.l
                                     if item.vol <= 0: continue
-                                    box_area = item.w * item.d
+                                    # [수정] item.d -> item.l
+                                    box_area = item.w * item.l
                                     
+                                    # [수정] t.d -> t.l
                                     q_front_left += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, 0, mid_y) / box_area)
                                     q_front_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, 0, mid_y) / box_area)
-                                    q_rear_left += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, mid_y, t.d) / box_area)
-                                    q_rear_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d) / box_area)
+                                    q_rear_left += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, mid_y, t.l) / box_area)
+                                    q_rear_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.l) / box_area)
                                 
                                 total_w = t.total_weight if t.total_weight > 0 else 1
                                 c_q1, c_q2 = st.columns(2)
