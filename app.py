@@ -45,7 +45,6 @@ class Truck:
             return False
         
         # [규칙] 안전 우선: 왼쪽 벽면부터 채우기 (X 오름차순)
-        # Z(바닥) -> Y(안쪽) -> X(왼쪽) 순서 유지
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
         
         best_pivot = None
@@ -181,7 +180,7 @@ def load_data(df):
 def run_optimization(all_items):
     MARGIN_LENGTH = 200 
 
-    # [유지] 하이브리드 정렬 (장축 우선 -> 폭 우선 -> 길이 우선)
+    # [유지] 하이브리드 정렬
     def get_hybrid_sorted_items(items_to_sort):
         return sorted(items_to_sort, key=lambda x: (
             1 if x.d >= 2200 else 0,
@@ -190,7 +189,7 @@ def run_optimization(all_items):
             x.weight
         ), reverse=True)
 
-    # [유지] Mound Sort (무게 밸런싱)
+    # [유지] Mound Sort
     def mound_sort_group(group_items):
         s_items = sorted(group_items, key=lambda x: x.weight)
         result = [None] * len(s_items)
@@ -287,11 +286,10 @@ def run_optimization(all_items):
     
     final_trucks = []
     if best_solution:
-        # [수정] 톤수 오름차순(작은 차 -> 큰 차) 정렬
+        # 톤수 오름차순 정렬
         best_solution.sort(key=lambda t: t.max_weight)
         for idx, t in enumerate(best_solution):
-            # [수정] 이름 포맷 변경: [1] 5톤, [2] 11톤 ...
-            t.name = f"[{idx+1}] {t.name}"
+            t.name = f"{t.name} (No.{idx+1})" # 이름 임시 저장 (화면 표시용은 별도 처리)
             final_trucks.append(t)
     return final_trucks
 
@@ -300,8 +298,7 @@ def run_optimization(all_items):
 # ==========================================
 def draw_truck_3d(truck):
     fig = go.Figure()
-    # 이름 파싱 ([1] 5톤 -> 5톤)
-    original_name = truck.name.split('] ')[1].split(' (')[0] if ']' in truck.name else truck.name
+    original_name = truck.name.split(' (')[0]
     spec = TRUCK_DB.get(original_name, TRUCK_DB["5톤"])
     W, L, Real_H = spec['w'], spec['l'], spec['real_h']
     LIMIT_H = 1300
@@ -310,7 +307,6 @@ def draw_truck_3d(truck):
     COLOR_FRAME = '#555555' 
     COLOR_FRAME_LINE = '#333333'
 
-    # [수정] draw_cube에 hovertext 인자 추가 (툴팁 Fix)
     def draw_cube(x, y, z, w, l, h, face_color, line_color=None, opacity=1.0, hovertext=None):
         hover_info = 'text' if hovertext else 'skip'
         fig.add_trace(go.Mesh3d(
@@ -329,7 +325,7 @@ def draw_truck_3d(truck):
             ze=[z,z,z,z,z,None, z+h,z+h,z+h,z+h,z+h,None, z,z+h,None, z,z+h,None, z,z+h,None, z,z+h]
             fig.add_trace(go.Scatter3d(x=xe, y=ye, z=ze, mode='lines', line=dict(color=line_color, width=3), showlegend=False, hoverinfo='skip'))
 
-    # 트럭 프레임
+    # 프레임 렌더링
     ch_h = 100; f_tk = 40; bmp_h = 140; 
     draw_cube(0, 0, -ch_h, W, L, ch_h, '#AAAAAA', COLOR_FRAME)
     draw_cube(-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) 
@@ -377,15 +373,10 @@ def draw_truck_3d(truck):
     for item in truck.items:
         col = '#FF6B6B' if item.is_heavy else '#FAD7A0'
         hover_text = f"<b>📦 {item.name}</b><br>규격: {int(item.w)}x{int(item.d)}x{int(item.h)}<br>중량: {int(item.weight):,}kg<br>적재단수: {item.level}단"
-        
-        # [수정] draw_cube에 hovertext 직접 전달하여 툴팁 활성화
         draw_cube(item.x, item.y, item.z, item.w, item.d, item.h, col, '#000000', hovertext=hover_text)
-        
         annotations.append(dict(x=item.x + item.w/2, y=item.y + item.d/2, z=item.z + item.h/2, text=f"<b>{item.name}</b>", xanchor="center", yanchor="middle", showarrow=False, font=dict(color="black", size=11), bgcolor="rgba(255,255,255,0.5)"))
 
-    # 기본값: 쿼터뷰(Iso)
     eye = dict(x=-1.8, y=-1.8, z=1.2); up = dict(x=0, y=0, z=1)
-
     fig.update_layout(scene=dict(aspectmode='data', xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False), bgcolor='white', camera=dict(eye=eye, up=up), annotations=annotations), margin=dict(l=0, r=0, b=0, t=0), height=600, uirevision=str(uuid.uuid4()))
     return fig
 
@@ -412,12 +403,9 @@ if uploaded_file:
             elif '길이' in c: rename_map[c] = '길이 (mm)'
             elif '중량' in c: rename_map[c] = '중량 (kg)'
         df_display = df_display.rename(columns=rename_map)
-        
-        cols_to_format = ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)']
-        for col in cols_to_format:
+        for col in ['폭 (mm)', '높이 (mm)', '길이 (mm)', '중량 (kg)']:
             if col in df_display.columns: df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "")
         if '박스번호' in df_display.columns: df_display['박스번호'] = df_display['박스번호'].astype(str)
-
         st.dataframe(df_display, use_container_width=True, hide_index=True, height=250, column_config={c: st.column_config.Column(width="medium") for c in df_display.columns})
 
         st.subheader("🚛 차량 기준 정보")
@@ -436,66 +424,110 @@ if uploaded_file:
                 trucks = run_optimization(items)
                 if trucks:
                     total_cost = sum(t.cost for t in trucks)
-
                     m1, m2, m3 = st.columns(3)
                     m1.metric("총 배차 차량", f"{len(trucks)}대")
                     m2.metric("총 예상 운송비", f"{total_cost:,}원")
                     m3.metric("총 적재 중량", f"{sum(t.total_weight for t in trucks):,.0f} kg")
                     st.divider()
 
-                    # [수정] 컨트롤 패널 삭제 -> 바로 탭 표시
-                    tabs = st.tabs([f"{t.name}" for t in trucks])
-                    for i, tab in enumerate(tabs):
-                        with tab:
-                            t = trucks[i]
-                            c_info, c_chart = st.columns([1, 3]) # 레이아웃 비율
-                            with c_info:
-                                st.markdown(f"#### {t.name}")
-                                limit_h = 1300
-                                truck_limit_vol = t.w * t.d * limit_h 
-                                used_vol = sum([b.vol for b in t.items])
-                                vol_pct = min(1.0, used_vol / truck_limit_vol) if truck_limit_vol > 0 else 0
-                                weight_pct = min(1.0, t.total_weight / t.max_weight)
+                    # [New UI] Dashboard Layout (Split View)
+                    c_list, c_detail = st.columns([2, 3])
+                    
+                    with c_list:
+                        st.markdown("### 🚛 배차 리스트")
+                        summary_data = []
+                        for idx, t in enumerate(trucks):
+                            limit_h = 1300
+                            truck_limit_vol = t.w * t.d * limit_h
+                            used_vol = sum([b.vol for b in t.items])
+                            vol_pct = min(1.0, used_vol / truck_limit_vol) if truck_limit_vol > 0 else 0
+                            
+                            summary_data.append({
+                                "No.": idx + 1,
+                                "차량": t.name.split(' (')[0], # 이름 깔끔하게
+                                "체적 적재율": vol_pct,
+                                "비용": t.cost,
+                                "박스수": len(t.items)
+                            })
+                        
+                        summary_df = pd.DataFrame(summary_data)
+                        
+                        # Interactive Table
+                        event = st.dataframe(
+                            summary_df,
+                            use_container_width=True,
+                            hide_index=True,
+                            on_select="rerun",
+                            selection_mode="single-row",
+                            column_config={
+                                "No.": st.column_config.NumberColumn(width="small"),
+                                "차량": st.column_config.TextColumn(width="small"),
+                                "체적 적재율": st.column_config.ProgressColumn(
+                                    format="%.1f%%",
+                                    min_value=0, max_value=1,
+                                    width="medium"
+                                ),
+                                "비용": st.column_config.NumberColumn(format="%d원", width="small"),
+                                "박스수": st.column_config.NumberColumn(format="%d개", width="small")
+                            }
+                        )
+                    
+                    # Selection Logic
+                    selected_indices = event.selection.rows
+                    if selected_indices:
+                        selected_idx = selected_indices[0]
+                    else:
+                        selected_idx = 0 # Default to first truck
+                    
+                    target_truck = trucks[selected_idx]
 
-                                st.progress(vol_pct, text=f"📏 체적 적재율 (1.3m기준): {vol_pct*100:.1f}%")
-                                st.caption(f"⚖️ 중량 적재율: {weight_pct*100:.1f}%")
-                                st.divider()
+                    with c_detail:
+                        st.markdown(f"### 🔍 상세 뷰: [{selected_idx+1}] {target_truck.name.split(' (')[0]}")
+                        
+                        # 3D Chart
+                        st.plotly_chart(draw_truck_3d(target_truck), use_container_width=True)
+                        
+                        # Detail Metrics
+                        t = target_truck
+                        weight_pct = min(1.0, t.total_weight / t.max_weight)
+                        limit_h = 1300
+                        truck_limit_vol = t.w * t.d * limit_h 
+                        used_vol = sum([b.vol for b in t.items])
+                        vol_pct = min(1.0, used_vol / truck_limit_vol) if truck_limit_vol > 0 else 0
 
-                                st.markdown("##### ⚖️ 무게 분포 (4분면)")
-                                mid_y = t.d / 2; mid_x = t.w / 2  
-                                q_front_left = q_front_right = q_rear_left = q_rear_right = 0.0
-                                
-                                def calc_overlap(b_x1, b_x2, b_y1, b_y2, q_x1, q_x2, q_y1, q_y2):
-                                    x_overlap = max(0, min(b_x2, q_x2) - max(b_x1, q_x1))
-                                    y_overlap = max(0, min(b_y2, q_y2) - max(b_y1, q_y1))
-                                    return x_overlap * y_overlap
+                        c_d1, c_d2 = st.columns(2)
+                        c_d1.progress(vol_pct, text=f"체적 적재율: {vol_pct*100:.1f}%")
+                        c_d2.progress(weight_pct, text=f"중량 적재율: {weight_pct*100:.1f}%")
+                        
+                        # Weight Distribution
+                        st.markdown("##### ⚖️ 무게 분포 (4분면)")
+                        mid_y = t.d / 2; mid_x = t.w / 2  
+                        q_front_left = q_front_right = q_rear_left = q_rear_right = 0.0
+                        
+                        def calc_overlap(b_x1, b_x2, b_y1, b_y2, q_x1, q_x2, q_y1, q_y2):
+                            x_overlap = max(0, min(b_x2, q_x2) - max(b_x1, q_x1))
+                            y_overlap = max(0, min(b_y2, q_y2) - max(b_y1, q_y1))
+                            return x_overlap * y_overlap
 
-                                for item in t.items:
-                                    b_x1, b_x2 = item.x, item.x + item.w
-                                    b_y1, b_y2 = item.y, item.y + item.d
-                                    if item.vol <= 0: continue
-                                    box_area = item.w * item.d
-                                    
-                                    q_front_left += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, 0, mid_y) / box_area)
-                                    q_front_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, 0, mid_y) / box_area)
-                                    q_rear_left += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, mid_y, t.d) / box_area)
-                                    q_rear_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d) / box_area)
-                                
-                                total_w = t.total_weight if t.total_weight > 0 else 1
-                                c_q1, c_q2 = st.columns(2)
-                                with c_q1: st.metric("앞-좌", f"{q_front_left/total_w*100:.0f}%", f"{int(q_front_left)}kg", delta_color="off")
-                                    
-                                with c_q2: st.metric("앞-우", f"{q_front_right/total_w*100:.0f}%", f"{int(q_front_right)}kg", delta_color="off")
-                                c_q3, c_q4 = st.columns(2)
-                                with c_q3: st.metric("뒤-좌", f"{q_rear_left/total_w*100:.0f}%", f"{int(q_rear_left)}kg", delta_color="off")
-                                with c_q4: st.metric("뒤-우", f"{q_rear_right/total_w*100:.0f}%", f"{int(q_rear_right)}kg", delta_color="off")
-                                st.divider()
+                        for item in t.items:
+                            b_x1, b_x2 = item.x, item.x + item.w
+                            b_y1, b_y2 = item.y, item.y + item.d
+                            if item.vol <= 0: continue
+                            box_area = item.w * item.d
+                            q_front_left += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, 0, mid_y) / box_area)
+                            q_front_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, 0, mid_y) / box_area)
+                            q_rear_left += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, mid_y, t.d) / box_area)
+                            q_rear_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d) / box_area)
+                        
+                        total_w = t.total_weight if t.total_weight > 0 else 1
+                        c_q1, c_q2, c_q3, c_q4 = st.columns(4)
+                        c_q1.metric("앞-좌", f"{q_front_left/total_w*100:.0f}%", f"{int(q_front_left)}kg")
+                        c_q2.metric("앞-우", f"{q_front_right/total_w*100:.0f}%", f"{int(q_front_right)}kg")
+                        c_q3.metric("뒤-좌", f"{q_rear_left/total_w*100:.0f}%", f"{int(q_rear_left)}kg")
+                        c_q4.metric("뒤-우", f"{q_rear_right/total_w*100:.0f}%", f"{int(q_rear_right)}kg")
+                        
+                        with st.expander("📦 상세 적재 리스트"):
+                            st.dataframe([{"박스명": b.name, "단수": f"{b.level}단", "중량": f"{int(b.weight)}kg"} for b in t.items], hide_index=True, use_container_width=True)
 
-                                st.dataframe(pd.DataFrame({"항목": ["박스 수", "적재 중량", "운송 비용"], "값": [f"{len(t.items)}개", f"{t.total_weight:,.0f} kg", f"{t.cost:,} 원"]}), hide_index=True, use_container_width=True)
-                                with st.expander("📦 적재 리스트 확인"):
-                                    st.dataframe([{"박스명": b.name, "단수": f"{b.level}단"} for b in t.items], hide_index=True)
-
-                            with c_chart:
-                                st.plotly_chart(draw_truck_3d(t), use_container_width=True)
                 else: st.warning("적재 가능한 차량을 찾지 못했습니다.")
     except Exception as e: st.error(f"오류 발생: {e}")
