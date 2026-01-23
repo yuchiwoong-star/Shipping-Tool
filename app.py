@@ -462,6 +462,11 @@ def draw_truck_3d(truck):
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
 st.markdown("✅ **규칙 : 비용최소화 | 회전금지 | 길이우선 적재 | 바닥면 80% 지지충족 | 하중제한 준수 | 차량길이 20cm 여유 | 상위 10% 중량박스 빨간색 표시 | 안전 우선 적재(밴딩 무너짐 고려)**")
 
+# [신규 함수] 옵션 변경 시 결과를 초기화하는 콜백 함수
+def clear_result():
+    if 'optimized_result' in st.session_state:
+        del st.session_state['optimized_result']
+
 # [1] 파일 업로드를 최상단으로 이동 (파란색 영역)
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
 
@@ -471,26 +476,28 @@ st.sidebar.divider()
 st.sidebar.subheader("⚙️ 적재 옵션 설정")
 st.sidebar.info("비용이 비싸게 나온다면 '높이 제한'을 늘리고 '간격'을 해제해보세요.")
 
-# 높이 제한을 라디오 버튼으로 변경 (빨간색 영역 관련)
-# [수정] 기본값 1200mm (index=0)으로 변경
+# 높이 제한 (on_change 추가)
 opt_height_str = st.sidebar.radio(
     "적재 높이 제한", 
     options=["1200mm", "1300mm", "1400mm"], 
     index=0, # 기본값 1200mm
-    horizontal=True
+    horizontal=True,
+    on_change=clear_result # 변경 시 결과 초기화
 )
 opt_height = int(opt_height_str.replace("mm", ""))
 
-# [수정] 기본값 200mm (index=2)으로 변경
+# 박스 간 간격 (on_change 추가)
 opt_gap_str = st.sidebar.radio(
     "박스 간 간격 (길이방향)", 
     options=["0mm", "100mm", "200mm", "300mm"], 
     index=2, # 기본값 200mm
-    horizontal=True
+    horizontal=True,
+    on_change=clear_result # 변경 시 결과 초기화
 )
 gap_mm = int(opt_gap_str.replace("mm", ""))
 
-opt_level = st.sidebar.checkbox("최대 4단 적재 제한", value=True)
+# 4단 적재 제한 (on_change 추가)
+opt_level = st.sidebar.checkbox("최대 4단 적재 제한", value=True, on_change=clear_result)
 
 if uploaded_file:
     try:
@@ -525,7 +532,6 @@ if uploaded_file:
         # [3] 최적 배차 실행 버튼 (상태 진행바 st.status 적용)
         if st.button("최적 배차 실행 (최소비용)", type="primary"):
             
-            # [변경] spinner 대신 status 사용
             with st.status("🚀 최적의 차량 조합을 분석 중입니다... (잠시만 기다려주세요)", expanded=True) as status:
                 st.write("1. 데이터를 읽고 변환하고 있습니다...")
                 time.sleep(0.1) 
