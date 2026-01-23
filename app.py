@@ -540,9 +540,77 @@ if uploaded_file:
                                 with c_info:
                                     st.markdown(f"#### {t.name}")
                                     
-                                    weight_pct = min(1.0, t.total_weight / t.max_weight)
-                                    st.progress(weight_pct, text=f"중량 적재율: {weight_pct*100:.1f}%")
+                                    # --- [수정] 1. 적재율 계산 방식 변경 (제한높이 1300mm 기준 체적) ---
+                                    # 트럭의 제한 체적 계산: 폭 * 길이 * 제한높이(1300)
+                                    # 박스의 체적 합계 계산
+                                    limit_h = 1300
+                                    truck_limit_vol = t.w * t.d * limit_h # t.d is length in class logic? No, check class.
+                                    # Truck init: w, h, d(length). So t.d is length.
+                                    # NOTE: Class Truck init: (w, h, d, max_weight...). But TRUCK_DB has 'l'. 
+                                    # Class uses 'd' as length.
                                     
+                                    used_vol = sum([b.volume for b in t.items])
+                                    total_limit_vol = t.w * t.d * limit_h
+                                    
+                                    vol_pct = 0
+                                    if total_limit_vol > 0:
+                                        vol_pct = min(1.0, used_vol / total_limit_vol)
+                                    
+                                    # 기존 중량 퍼센트도 계산은 해둠 (정보 표시용)
+                                    weight_pct = min(1.0, t.total_weight / t.max_weight)
+
+                                    st.progress(vol_pct, text=f"📏 체적 적재율 (1.3m기준): {vol_pct*100:.1f}%")
+                                    st.caption(f"⚖️ 중량 적재율: {weight_pct*100:.1f}%")
+                                    
+                                    st.divider()
+
+                                    # --- [추가] 2. 무게 분포도 (4분면) ---
+                                    st.markdown("##### ⚖️ 무게 분포 (4분면)")
+                                    
+                                    # 중심점 기준 (길이방향 절반, 폭방향 절반)
+                                    # Truck Length direction is Y (0~L). Front is near L (Cab). Rear is near 0.
+                                    # Truck Width direction is X (0~W).
+                                    mid_y = t.d / 2  # 길이의 절반
+                                    mid_x = t.w / 2  # 폭의 절반
+                                    
+                                    q_front_left = 0.0
+                                    q_front_right = 0.0
+                                    q_rear_left = 0.0
+                                    q_rear_right = 0.0
+                                    
+                                    for item in t.items:
+                                        # 박스의 중심좌표
+                                        cx = item.x + item.w / 2
+                                        cy = item.y + item.d / 2
+                                        w = item.weight
+                                        
+                                        # Y가 크면 앞쪽(운전석), 작으면 뒤쪽
+                                        is_front = cy >= mid_y
+                                        # X가 작으면 왼쪽, 크면 오른쪽 (보는 시점에 따라 다르나 기준 고정)
+                                        is_left = cx < mid_x
+                                        
+                                        if is_front and is_left: q_front_left += w
+                                        elif is_front and not is_left: q_front_right += w
+                                        elif not is_front and is_left: q_rear_left += w
+                                        else: q_rear_right += w
+                                    
+                                    total_w = t.total_weight if t.total_weight > 0 else 1
+                                    
+                                    # 2x2 그리드로 표시
+                                    c_q1, c_q2 = st.columns(2)
+                                    with c_q1:
+                                        st.metric("앞-좌", f"{q_front_left/total_w*100:.0f}%", f"{int(q_front_left)}kg", delta_color="off")
+                                    with c_q2:
+                                        st.metric("앞-우", f"{q_front_right/total_w*100:.0f}%", f"{int(q_front_right)}kg", delta_color="off")
+                                    
+                                    c_q3, c_q4 = st.columns(2)
+                                    with c_q3:
+                                        st.metric("뒤-좌", f"{q_rear_left/total_w*100:.0f}%", f"{int(q_rear_left)}kg", delta_color="off")
+                                    with c_q4:
+                                        st.metric("뒤-우", f"{q_rear_right/total_w*100:.0f}%", f"{int(q_rear_right)}kg", delta_color="off")
+
+                                    st.divider()
+
                                     st.dataframe(pd.DataFrame({
                                         "항목": ["박스 수", "적재 중량", "운송 비용"],
                                         "값": [f"{len(t.items)}개", f"{t.total_weight:,.0f} kg", f"{t.cost:,} 원"]
