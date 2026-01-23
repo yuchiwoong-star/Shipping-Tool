@@ -470,20 +470,23 @@ st.sidebar.subheader("⚙️ 적재 옵션 설정")
 st.sidebar.info("비용이 비싸게 나온다면 '높이 제한'을 늘리고 '간격'을 해제해보세요.")
 
 # 높이 제한을 라디오 버튼으로 변경 (빨간색 영역 관련)
-opt_height = st.sidebar.radio(
-    "적재 높이 제한 (mm)", 
-    options=[1200, 1300, 1400], 
-    index=1, # 기본값 1300
+# [수정] 기본값 1200mm (index=0)으로 변경
+opt_height_str = st.sidebar.radio(
+    "적재 높이 제한", 
+    options=["1200mm", "1300mm", "1400mm"], 
+    index=0, # 기본값 1200mm
     horizontal=True
 )
+opt_height = int(opt_height_str.replace("mm", ""))
 
+# [수정] 기본값 200mm (index=2)으로 변경
 opt_gap_str = st.sidebar.radio(
     "박스 간 간격 (길이방향)", 
-    options=["20cm", "30cm", "40cm"], 
-    index=1, 
+    options=["0mm", "100mm", "200mm", "300mm"], 
+    index=2, # 기본값 200mm
     horizontal=True
 )
-gap_mm = int(opt_gap_str.replace("cm", "")) * 10
+gap_mm = int(opt_gap_str.replace("mm", ""))
 
 opt_level = st.sidebar.checkbox("최대 4단 적재 제한", value=True)
 
@@ -561,7 +564,9 @@ if uploaded_file:
                             weight_pct = min(1.0, t.total_weight / t.max_weight)
 
                             st.progress(vol_pct, text=f"📏 체적 적재율 ({display_height/1000:.1f}m기준): {vol_pct*100:.1f}%")
-                            st.caption(f"⚖️ 중량 적재율: {weight_pct*100:.1f}%")
+                            
+                            # [수정] 중량 적재율도 프로그레스 바로 변경
+                            st.progress(weight_pct, text=f"⚖️ 중량 적재율: {weight_pct*100:.1f}%")
                             st.divider()
 
                             st.markdown("##### ⚖️ 무게 분포 (4분면)")
