@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import numpy as np
 import math
 import uuid
-import time # 로딩 지연 효과를 위해 추가
+import time
 from itertools import groupby
 
 # ==========================================
@@ -29,7 +29,7 @@ class Truck:
     def __init__(self, name, w, h, d, max_weight, cost, gap_mm=300, limit_level_on=True):
         self.name = name
         self.w = float(w)
-        self.h = float(h) # 사용자 설정 높이 반영
+        self.h = float(h)
         self.d = float(d) 
         self.max_weight = float(max_weight)
         self.cost = int(cost)
@@ -43,14 +43,12 @@ class Truck:
         self.limit_level_on = limit_level_on
 
     def put_item(self, item):
-        # 사용자 설정 간격 적용
         BOX_GAP_L = self.gap_mm
 
         if self.total_weight + item.weight > self.max_weight:
             return False
         
-        # [규칙] 안전 우선: 왼쪽 벽면부터 채우기 (X 오름차순)
-        # Z(바닥) -> Y(안쪽) -> X(왼쪽) 순서 유지
+        # [규칙] 안전 우선: 왼쪽 벽면부터 채우기
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
         
         best_pivot = None
@@ -136,6 +134,32 @@ class Truck:
 # ==========================================
 st.set_page_config(layout="wide", page_title="출하박스 적재 최적화 시스템")
 
+# [수정] 탭 스타일 CSS 추가 (탭 크기 확대 및 스타일링)
+st.markdown("""
+<style>
+    /* 탭 컨테이너 스타일 */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    /* 개별 탭 버튼 스타일 */
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: #F0F2F6;
+        border-radius: 5px;
+        color: #31333F;
+        font-size: 16px; /* 폰트 크기 키움 */
+        font-weight: 600;
+        padding: 0px 20px; /* 내부 여백 증가 */
+    }
+    /* 선택된 탭 스타일 */
+    .stTabs [aria-selected="true"] {
+        background-color: #FF4B4B !important;
+        color: white !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 TRUCK_DB = {
     "1톤":   {"w": 1600, "real_h": 2000, "l": 2800,  "weight": 1490,  "cost": 78000},
     "2.5톤": {"w": 1900, "real_h": 2000, "l": 4200,  "weight": 3490,  "cost": 110000},
@@ -190,9 +214,8 @@ def load_data(df):
 def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
     MARGIN_LENGTH = 200 
 
-    # [내부함수] 밴딩을 위한 피라미드 정렬 (높이 기준 Mound Sort)
+    # [내부함수] Mound Sort
     def mound_sort_by_height(items):
-        # [수정] 오름차순(낮은 것 -> 높은 것) 정렬해야 양 끝이 낮고 가운데가 높아짐
         s_items = sorted(items, key=lambda x: x.h, reverse=False) 
         result = [None] * len(s_items)
         left = 0
@@ -207,39 +230,23 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
                 right -= 1
         return result
 
-    # [내부함수] 무게중심 중앙 정렬 (X축 이동)
+    # [내부함수] 중앙 정렬
     def recenter_truck_items(truck):
-        if not truck.items:
-            return
-        
+        if not truck.items: return
         min_x = min(item.x for item in truck.items)
         max_x = max(item.x + item.w for item in truck.items)
         load_width = max_x - min_x
-        
         remaining_space = truck.w - load_width
         offset_x = remaining_space / 2.0
-        
-        if offset_x <= 0.1:
-            return
-
-        for item in truck.items:
-            item.x += offset_x
-        
+        if offset_x <= 0.1: return
+        for item in truck.items: item.x += offset_x
         new_pivots = []
-        for p in truck.pivots:
-            new_pivots.append([p[0] + offset_x, p[1], p[2]])
+        for p in truck.pivots: new_pivots.append([p[0] + offset_x, p[1], p[2]])
         truck.pivots = new_pivots
 
-    # [기존 유지] 하이브리드 정렬
     def get_hybrid_sorted_items(items_to_sort):
-        return sorted(items_to_sort, key=lambda x: (
-            1 if x.d >= 2200 else 0,
-            x.w,
-            x.d,
-            x.weight
-        ), reverse=True)
+        return sorted(items_to_sort, key=lambda x: (1 if x.d >= 2200 else 0, x.w, x.d, x.weight), reverse=True)
 
-    # [기존 유지] Mound Sort (무게 밸런싱)
     def mound_sort_group(group_items):
         s_items = sorted(group_items, key=lambda x: x.weight)
         result = [None] * len(s_items)
@@ -266,12 +273,10 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
         while rem:
             best_truck = None
             max_eff = -1.0
-            
             candidates = []
             for t_name in TRUCK_DB:
                 spec = TRUCK_DB[t_name]
-                if total_rem_weight > 10000 and spec['weight'] < 3500:
-                    continue
+                if total_rem_weight > 10000 and spec['weight'] < 3500: continue
                 candidates.append((t_name, spec))
 
             rem = get_balanced_sorted_items(rem)
@@ -304,7 +309,6 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
 
     best_solution = None
     min_total_cost = float('inf')
-    
     total_all_weight = sum(i.weight for i in all_items)
     sorted_all_items = get_balanced_sorted_items(all_items)
     
@@ -340,27 +344,22 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
     if best_solution:
         best_solution.sort(key=lambda t: t.max_weight)
         for idx, t in enumerate(best_solution):
-            
-            # [재배치] 배차 확정 후 재배치 로직 실행
             items_in_truck = t.items[:] 
-            
             t.items = []
             t.pivots = [[0.0, 0.0, 0.0]]
             t.total_weight = 0.0
             
-            # 1. 높이 기준 Mound Sort
             reordered_items = mound_sort_by_height(items_in_truck)
-            
             for item in reordered_items:
                 if item is None: continue
                 retry_box = Box(item.name, item.w, item.h, item.d, item.weight)
                 retry_box.is_heavy = item.is_heavy
                 t.put_item(retry_box)
 
-            # 2. 무게중심 중앙 정렬
             recenter_truck_items(t)
-
-            t.name = f"[{idx+1}] {t.name}"
+            
+            # [수정] 차량 이름 포맷 변경: 5톤(#1) 스타일
+            t.name = f"{t.name} (#{idx+1})"
             final_trucks.append(t)
             
     return final_trucks
@@ -370,7 +369,9 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
 # ==========================================
 def draw_truck_3d(truck):
     fig = go.Figure()
-    original_name = truck.name.split('] ')[1].split(' (')[0] if ']' in truck.name else truck.name
+    
+    # [수정] 이름 파싱 로직 변경 (5톤 (#1) -> 5톤)
+    original_name = truck.name.split(' (#')[0] if '(#' in truck.name else truck.name
     spec = TRUCK_DB.get(original_name, TRUCK_DB["5톤"])
     W, L, Real_H = spec['w'], spec['l'], spec['real_h']
     
@@ -462,41 +463,37 @@ def draw_truck_3d(truck):
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
 st.markdown("✅ **규칙 : 비용최소화 | 회전금지 | 길이우선 적재 | 바닥면 80% 지지충족 | 하중제한 준수 | 차량길이 20cm 여유 | 상위 10% 중량박스 빨간색 표시 | 안전 우선 적재(밴딩 무너짐 고려)**")
 
-# [신규 함수] 옵션 변경 시 결과를 초기화하는 콜백 함수
 def clear_result():
     if 'optimized_result' in st.session_state:
         del st.session_state['optimized_result']
 
-# [1] 파일 업로드를 최상단으로 이동 (파란색 영역)
+# [1] 파일 업로드
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
 
 st.sidebar.divider()
 
-# [2] 적재 옵션 설정 (그 아래로 이동)
+# [2] 적재 옵션 설정
 st.sidebar.subheader("⚙️ 적재 옵션 설정")
 st.sidebar.info("비용이 비싸게 나온다면 '높이 제한'을 늘리고 '간격'을 해제해보세요.")
 
-# 높이 제한 (on_change 추가)
 opt_height_str = st.sidebar.radio(
     "적재 높이 제한", 
     options=["1200mm", "1300mm", "1400mm"], 
-    index=0, # 기본값 1200mm
+    index=0, 
     horizontal=True,
-    on_change=clear_result # 변경 시 결과 초기화
+    on_change=clear_result 
 )
 opt_height = int(opt_height_str.replace("mm", ""))
 
-# 박스 간 간격 (on_change 추가)
 opt_gap_str = st.sidebar.radio(
     "박스 간 간격 (길이방향)", 
     options=["0mm", "100mm", "200mm", "300mm"], 
-    index=2, # 기본값 200mm
+    index=2, 
     horizontal=True,
-    on_change=clear_result # 변경 시 결과 초기화
+    on_change=clear_result 
 )
 gap_mm = int(opt_gap_str.replace("mm", ""))
 
-# 4단 적재 제한 (on_change 추가)
 opt_level = st.sidebar.checkbox("최대 4단 적재 제한", value=True, on_change=clear_result)
 
 if uploaded_file:
@@ -529,7 +526,7 @@ if uploaded_file:
         for col in ['적재폭 (mm)', '적재길이 (mm)', '허용하중 (kg)', '운송단가 (원)']: df_truck[col] = df_truck[col].apply(lambda x: f"{x:,.0f}")
         st.dataframe(df_truck, use_container_width=True, hide_index=True, column_config={c: st.column_config.Column(width="medium") for c in df_truck.columns})
 
-        # [3] 최적 배차 실행 버튼 (상태 진행바 st.status 적용)
+        # [3] 최적 배차 실행 버튼
         if st.button("최적 배차 실행 (최소비용)", type="primary"):
             
             with st.status("🚀 최적의 차량 조합을 분석 중입니다... (잠시만 기다려주세요)", expanded=True) as status:
@@ -544,23 +541,18 @@ if uploaded_file:
                     st.write("2. 최적화 엔진 가동 중... (물량에 따라 시간이 소요됩니다)")
                     time.sleep(0.1) 
                     
-                    # 여기서만 최적화 실행
                     trucks = run_optimization(items, opt_height, gap_mm, opt_level)
                     
                     st.write("3. 결과 집계 및 시각화 준비 중...")
                     
-                    # 결과와 *당시 사용된 옵션값*을 세션 스테이트에 저장
                     st.session_state['optimized_result'] = trucks
                     st.session_state['calc_opt_height'] = opt_height
                     
                     time.sleep(0.2)
                     status.update(label="배차 분석 완료! 👇 아래 결과를 확인하세요.", state="complete", expanded=False)
         
-        # 결과 화면 표시 (저장된 결과가 있을 때만 표시)
         if 'optimized_result' in st.session_state:
             trucks = st.session_state['optimized_result']
-            
-            # 시각화에는 계산 당시의 높이 값을 사용 (화면 갱신 방지)
             display_height = st.session_state.get('calc_opt_height', 1300)
 
             if trucks:
@@ -578,17 +570,14 @@ if uploaded_file:
                         t = trucks[i]
                         c_info, c_chart = st.columns([1, 3]) 
                         with c_info:
-                            st.markdown(f"#### {t.name}")
+                            # [수정] 중복된 헤더 (#### [1] 5톤 등) 제거함
                             
-                            # 적재율 계산 (계산 당시 높이 기준)
                             truck_limit_vol = t.w * t.d * display_height 
                             used_vol = sum([b.vol for b in t.items])
                             vol_pct = min(1.0, used_vol / truck_limit_vol) if truck_limit_vol > 0 else 0
                             weight_pct = min(1.0, t.total_weight / t.max_weight)
 
                             st.progress(vol_pct, text=f"📏 체적 적재율 ({display_height/1000:.1f}m기준): {vol_pct*100:.1f}%")
-                            
-                            # [수정] 중량 적재율도 프로그레스 바로 변경
                             st.progress(weight_pct, text=f"⚖️ 중량 적재율: {weight_pct*100:.1f}%")
                             st.divider()
 
