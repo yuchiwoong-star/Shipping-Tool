@@ -4,9 +4,10 @@ import plotly.graph_objects as go
 import numpy as np
 import math
 import uuid
+from itertools import groupby
 
 # ==========================================
-# 1. 커스텀 물리 엔진 (핵심 로직 유지 + 산 모양 적재)
+# 1. 커스텀 물리 엔진
 # ==========================================
 class Box:
     def __init__(self, name, w, h, d, weight):
@@ -45,17 +46,10 @@ class Truck:
         if self.total_weight + item.weight > self.max_weight:
             return False
         
-        # --- [수정] Center-Out (산 모양) 적재 로직 ---
-        # 트럭의 폭 중앙선 계산
-        center_line = self.w / 2
-        
-        # 피벗 정렬 우선순위:
-        # 1순위: Z (낮은 곳부터 - 바닥 우선)
-        # 2순위: Y (안쪽 깊은 곳부터 - 0에 가까운 순)
-        # 3순위: X (중앙에 가까운 순) 
-        #    -> (현재 피벗 X + 박스절반)이 트럭 중앙선(center_line)과 얼마나 차이나는지 절대값(abs)으로 정렬
-        #    -> 이렇게 하면 박스가 정중앙에 놓일 수 있는 피벗을 가장 먼저 찾습니다.
-        self.pivots.sort(key=lambda p: (p[2], p[1], abs((p[0] + item.w / 2) - center_line)))
+        # --- [수정] 피벗 로직 원복 (안전 최우선: 한쪽 방향 밀착 적재) ---
+        # Z(낮은순) -> Y(안쪽순) -> X(왼쪽순)
+        # 빈 공간 없이 왼쪽 벽부터 채워나갑니다.
+        self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
         
         for p in self.pivots:
             px, py, pz = p
@@ -97,7 +91,7 @@ class Truck:
         
         if fit:
             self.pivots.append([item.x + item.w, item.y, item.z])
-            # [수정] 길이 방향(y)으로 다음에 박스를 놓을 때는 BOX_GAP_L(300mm) 만큼 띄워서 피벗 생성
+            # [규칙] 길이 방향(y) 간격 유지
             self.pivots.append([item.x, item.y + item.d + BOX_GAP_L, item.z])
             self.pivots.append([item.x, item.y, item.z + item.h])
         return fit
@@ -181,8 +175,42 @@ def load_data(df):
     return items
 
 def run_optimization(all_items):
-    # [수정] 차량 길이 여유 20cm (200mm)
     MARGIN_LENGTH = 200 
+
+    # --- [추가] Mound Sorting Algorithm ---
+    # 무거운 것이 리스트의 중간에 오도록 정렬 (가벼움 -> 무거움 -> 가벼움)
+    def mound_sort_group(group_items):
+        # 무게 오름차순 정렬
+        s_items = sorted(group_items, key=lambda x: x.weight)
+        result = [None] * len(s_items)
+        left = 0
+        right = len(s_items) - 1
+        
+        for i, item in enumerate(s_items):
+            if i % 2 == 0:
+                result[left] = item
+                left += 1
+            else:
+                result[right] = item
+                right -= 1
+        return result
+
+    def get_balanced_sorted_items(items_to_sort):
+        # 1. 길이(d) 내림차순으로 1차 정렬 (적재 효율성 유지)
+        primary_sorted = sorted(items_to_sort, key=lambda x: x.d, reverse=True)
+        
+        final_list = []
+        # 2. 같은 길이(또는 규격)를 가진 박스끼리 그룹핑
+        # (부동소수점 오차 고려하여 문자열 키로 그룹핑하거나, 단순히 d값 기준)
+        for k, g in groupby(primary_sorted, key=lambda x: (x.w, x.h, x.d)):
+            group_list = list(g)
+            # 3. 그룹 내에서 Mound Sort 적용 (무게 밸런싱)
+            if len(group_list) > 2:
+                final_list.extend(mound_sort_group(group_list))
+            else:
+                # 2개 이하면 그냥 무거운거 먼저 (기존 방식)
+                final_list.extend(sorted(group_list, key=lambda x: x.weight, reverse=True))
+        return final_list
 
     def solve_remaining_greedy(current_items):
         used = []
@@ -194,7 +222,9 @@ def run_optimization(all_items):
                 effective_l = spec['l'] - MARGIN_LENGTH
                 t = Truck(t_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
                 
-                test_i = sorted(rem, key=lambda x: x.d, reverse=True)
+                # [수정] 밸런싱 정렬 적용
+                test_i = get_balanced_sorted_items(rem)
+                
                 count = 0
                 w_sum = 0
                 for item in test_i:
@@ -228,7 +258,9 @@ def run_optimization(all_items):
         effective_l = spec['l'] - MARGIN_LENGTH
         start_truck = Truck(start_truck_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
         
-        items_sorted = sorted(all_items, key=lambda x: x.d, reverse=True)
+        # [수정] 초기 적재 시에도 밸런싱 정렬 적용
+        items_sorted = get_balanced_sorted_items(all_items)
+        
         for item in items_sorted:
              new_box = Box(item.name, item.w, item.h, item.d, item.weight)
              new_box.is_heavy = getattr(item, 'is_heavy', False)
@@ -298,19 +330,13 @@ def draw_truck_3d(truck, camera_view="iso"):
     # 메인 바닥판
     draw_cube(0, 0, -ch_h, W, L, ch_h, '#AAAAAA', COLOR_FRAME)
     
-    # 앞면(운전석쪽, y=L 부근) - 코드상 프레임 위치이지만 시각적으로는 여기가 뒤(Tail)
-    # 헷갈림 방지: draw_truck_3d 내에서 L 좌표는 후미등이 있는 끝부분(Rear)임.
-    # 하지만 0 좌표는 막혀있는 벽(Front)임.
-    
-    # 옆 프레임들
+    # 프레임
     draw_cube(-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) 
     draw_cube(W-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE)
     draw_cube(-f_tk/2, L-f_tk, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, COLOR_FRAME_LINE)
     
-    # 범퍼 (y=L 위치, 후미)
     draw_cube(-f_tk/2, L, -ch_h-bmp_h, W+f_tk, f_tk, bmp_h, '#222222') 
     
-    # 후미등 (y=L 보다 뒤, 후미)
     light_y = L + f_tk
     light_z = -ch_h-bmp_h+40 
     light_w = 60; light_h = 20; light_d = 60
@@ -319,22 +345,20 @@ def draw_truck_3d(truck, camera_view="iso"):
 
     # 왼쪽 후미등 세트
     left_start = -f_tk/2 + margin_in
-    draw_cube(left_start, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000') # 빨강
-    draw_cube(left_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') # 주황
-    draw_cube(left_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA') # 흰색
+    draw_cube(left_start, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000') 
+    draw_cube(left_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') 
+    draw_cube(left_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA') 
 
     # 오른쪽 후미등 세트
     right_start = (W + f_tk/2) - margin_in - (light_w * 3)
-    draw_cube(right_start, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA') # 흰색
-    draw_cube(right_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') # 주황
-    draw_cube(right_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000') # 빨강
+    draw_cube(right_start, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA') 
+    draw_cube(right_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') 
+    draw_cube(right_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000') 
 
-    # 전면(벽, y=0 부근) 프레임
     draw_cube(-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) 
     draw_cube(W-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) 
     draw_cube(-f_tk/2, 0, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, COLOR_FRAME_LINE) 
 
-    # 천장 프레임
     draw_cube(-f_tk/2, 0, Real_H, f_tk, L, f_tk, COLOR_FRAME, COLOR_FRAME_LINE) 
     draw_cube(W-f_tk/2, 0, Real_H, f_tk, L, f_tk, COLOR_FRAME, COLOR_FRAME_LINE) 
 
@@ -385,7 +409,6 @@ def draw_truck_3d(truck, camera_view="iso"):
     draw_arrow_dim([-OFFSET, 0, 0], [-OFFSET, L, 0], f"길이 : {int(L)}")
     draw_arrow_dim([-OFFSET, L, 0], [-OFFSET, L, LIMIT_H], f"높이제한(최대4단) : {LIMIT_H}", color='red')
 
-    # 높이 제한 평면
     fig.add_trace(go.Scatter3d(
         x=[0, W, W, 0, 0], y=[0, 0, L, L, 0], z=[LIMIT_H]*5,
         mode='lines', line=dict(color='red', width=4, dash='dash'),
@@ -598,7 +621,6 @@ if uploaded_file:
                                         # --- [수정된 매핑] ---
                                         # 사용자가 "좌"라고 인식하는 영역 -> 실제 코드상 X가 큰 영역 (>= mid_x)
                                         # 사용자가 "우"라고 인식하는 영역 -> 실제 코드상 X가 작은 영역 (< mid_x)
-                                        # (y=0 ~ mid_y : 앞 / y=mid_y ~ L : 뒤)는 그대로 유지
                                         
                                         # Front (y < mid_y)
                                         # Left (사용자 기준) -> Code Right (mid_x ~ W)
