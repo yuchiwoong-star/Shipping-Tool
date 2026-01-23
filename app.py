@@ -560,34 +560,47 @@ if uploaded_file:
                                     
                                     st.divider()
 
-                                    # 2. 무게 분포도 (4분면) - [수정됨: 앞/뒤 로직 반전]
+                                    # 2. 무게 분포도 (4분면) - [수정됨: 면적 기반 계산]
                                     st.markdown("##### ⚖️ 무게 분포 (4분면)")
                                     
-                                    # Y축: 0(벽, 앞쪽) ~ L(후미등, 뒤쪽)
-                                    # X축: 0(왼쪽) ~ W(오른쪽)
-                                    mid_y = t.d / 2  # 길이의 절반
-                                    mid_x = t.w / 2  # 폭의 절반
+                                    # 사분면 경계 설정
+                                    mid_y = t.d / 2  # 길이의 절반 (Front ~ Rear 경계)
+                                    mid_x = t.w / 2  # 폭의 절반 (Left ~ Right 경계)
                                     
                                     q_front_left = 0.0
                                     q_front_right = 0.0
                                     q_rear_left = 0.0
                                     q_rear_right = 0.0
                                     
+                                    # 겹치는 면적 계산 함수
+                                    def calc_overlap(b_x1, b_x2, b_y1, b_y2, q_x1, q_x2, q_y1, q_y2):
+                                        x_overlap = max(0, min(b_x2, q_x2) - max(b_x1, q_x1))
+                                        y_overlap = max(0, min(b_y2, q_y2) - max(b_y1, q_y1))
+                                        return x_overlap * y_overlap
+
                                     for item in t.items:
-                                        # 박스의 중심좌표
-                                        cx = item.x + item.w / 2
-                                        cy = item.y + item.d / 2
-                                        w = item.weight
+                                        # 박스의 좌표 범위
+                                        b_x1, b_x2 = item.x, item.x + item.w
+                                        b_y1, b_y2 = item.y, item.y + item.d
+                                        box_area = item.w * item.d
                                         
-                                        # [수정] y값이 작을수록(0에 가까울수록) 앞쪽(Front, 벽면)
-                                        # y값이 클수록(L에 가까울수록) 뒤쪽(Rear, 후미등)
-                                        is_front = cy < mid_y 
-                                        is_left = cx < mid_x
-                                        
-                                        if is_front and is_left: q_front_left += w
-                                        elif is_front and not is_left: q_front_right += w
-                                        elif not is_front and is_left: q_rear_left += w
-                                        else: q_rear_right += w
+                                        if box_area <= 0: continue
+
+                                        # Front-Left (x: 0~mid_x, y: 0~mid_y) *Note: y=0 is Front
+                                        overlap_fl = calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, 0, mid_y)
+                                        q_front_left += item.weight * (overlap_fl / box_area)
+
+                                        # Front-Right (x: mid_x~W, y: 0~mid_y)
+                                        overlap_fr = calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, 0, mid_y)
+                                        q_front_right += item.weight * (overlap_fr / box_area)
+
+                                        # Rear-Left (x: 0~mid_x, y: mid_y~L)
+                                        overlap_rl = calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d)
+                                        q_rear_left += item.weight * (overlap_rl / box_area)
+
+                                        # Rear-Right (x: mid_x~W, y: mid_y~L)
+                                        overlap_rr = calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, mid_y, t.d)
+                                        q_rear_right += item.weight * (overlap_rr / box_area)
                                     
                                     total_w = t.total_weight if t.total_weight > 0 else 1
                                     
