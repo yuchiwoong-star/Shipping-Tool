@@ -6,7 +6,7 @@ import math
 import uuid
 
 # ==========================================
-# 1. 커스텀 물리 엔진 (핵심 로직 유지)
+# 1. 커스텀 물리 엔진 (핵심 로직 유지 + 밸런싱 추가)
 # ==========================================
 class Box:
     def __init__(self, name, w, h, d, weight):
@@ -45,8 +45,22 @@ class Truck:
         if self.total_weight + item.weight > self.max_weight:
             return False
         
-        # 피벗 정렬: Z(낮은순) -> Y(안쪽순) -> X(왼쪽순)
-        self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
+        # --- [수정] 좌우 무게 밸런싱 로직 (Zig-Zag 적재) ---
+        # 현재 적재된 박스들의 좌/우 무게 계산
+        center_x = self.w / 2
+        left_weight = sum(i.weight for i in self.items if i.x + i.w/2 < center_x)
+        right_weight = sum(i.weight for i in self.items if i.x + i.w/2 >= center_x)
+        
+        # 피벗 정렬: Z(낮은순) -> Y(안쪽순) -> X(좌우 밸런스 고려)
+        # 왼쪽이 더 무거우면 -> 오른쪽(X 큰값)부터 채우기 위해 X 내림차순 정렬
+        # 오른쪽이 더 무거우면 -> 왼쪽(X 작은값)부터 채우기 위해 X 오름차순 정렬
+        if left_weight > right_weight:
+            # Right First (Desc X)
+            self.pivots.sort(key=lambda p: (p[2], p[1], -p[0]))
+        else:
+            # Left First (Asc X) - Default
+            self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
+        # -----------------------------------------------
         
         for p in self.pivots:
             px, py, pz = p
@@ -560,7 +574,7 @@ if uploaded_file:
                                     
                                     st.divider()
 
-                                    # 2. 무게 분포도 (4분면) - [수정됨: 면적 기반 계산]
+                                    # 2. 무게 분포도 (4분면) - [수정됨: UI 표시 기준 좌/우 반전 적용]
                                     st.markdown("##### ⚖️ 무게 분포 (4분면)")
                                     
                                     # 사분면 경계 설정
@@ -585,21 +599,28 @@ if uploaded_file:
                                         box_area = item.w * item.d
                                         
                                         if box_area <= 0: continue
-
-                                        # Front-Left (x: 0~mid_x, y: 0~mid_y) *Note: y=0 is Front
-                                        overlap_fl = calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, 0, mid_y)
+                                        
+                                        # --- [수정된 매핑] ---
+                                        # 사용자가 "좌"라고 인식하는 영역 -> 실제 코드상 X가 큰 영역 (>= mid_x)
+                                        # 사용자가 "우"라고 인식하는 영역 -> 실제 코드상 X가 작은 영역 (< mid_x)
+                                        # (y=0 ~ mid_y : 앞 / y=mid_y ~ L : 뒤)는 그대로 유지
+                                        
+                                        # Front (y < mid_y)
+                                        # Left (사용자 기준) -> Code Right (mid_x ~ W)
+                                        overlap_fl = calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, 0, mid_y)
                                         q_front_left += item.weight * (overlap_fl / box_area)
-
-                                        # Front-Right (x: mid_x~W, y: 0~mid_y)
-                                        overlap_fr = calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, 0, mid_y)
+                                        
+                                        # Right (사용자 기준) -> Code Left (0 ~ mid_x)
+                                        overlap_fr = calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, 0, mid_y)
                                         q_front_right += item.weight * (overlap_fr / box_area)
-
-                                        # Rear-Left (x: 0~mid_x, y: mid_y~L)
-                                        overlap_rl = calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d)
+                                        
+                                        # Rear (y >= mid_y)
+                                        # Left (사용자 기준) -> Code Right (mid_x ~ W)
+                                        overlap_rl = calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, mid_y, t.d)
                                         q_rear_left += item.weight * (overlap_rl / box_area)
-
-                                        # Rear-Right (x: mid_x~W, y: mid_y~L)
-                                        overlap_rr = calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, mid_y, t.d)
+                                        
+                                        # Right (사용자 기준) -> Code Left (0 ~ mid_x)
+                                        overlap_rr = calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d)
                                         q_rear_right += item.weight * (overlap_rr / box_area)
                                     
                                     total_w = t.total_weight if t.total_weight > 0 else 1
