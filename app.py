@@ -289,15 +289,19 @@ def draw_truck_3d(truck, camera_view="iso"):
     # 메인 바닥판
     draw_cube(0, 0, -ch_h, W, L, ch_h, '#AAAAAA', COLOR_FRAME)
     
-    # 앞면(운전석쪽, y=L 부근) 프레임
+    # 앞면(운전석쪽, y=L 부근) - 코드상 프레임 위치이지만 시각적으로는 여기가 뒤(Tail)
+    # 헷갈림 방지: draw_truck_3d 내에서 L 좌표는 후미등이 있는 끝부분(Rear)임.
+    # 하지만 0 좌표는 막혀있는 벽(Front)임.
+    
+    # 옆 프레임들
     draw_cube(-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) 
     draw_cube(W-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE)
     draw_cube(-f_tk/2, L-f_tk, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, COLOR_FRAME_LINE)
     
-    # 범퍼 (앞쪽 y=L 에 위치)
+    # 범퍼 (y=L 위치, 후미)
     draw_cube(-f_tk/2, L, -ch_h-bmp_h, W+f_tk, f_tk, bmp_h, '#222222') 
     
-    # 후미등 3색 구현
+    # 후미등 (y=L 보다 뒤, 후미)
     light_y = L + f_tk
     light_z = -ch_h-bmp_h+40 
     light_w = 60; light_h = 20; light_d = 60
@@ -316,7 +320,7 @@ def draw_truck_3d(truck, camera_view="iso"):
     draw_cube(right_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') # 주황
     draw_cube(right_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000') # 빨강
 
-    # 후면(입구, y=0 부근) 프레임
+    # 전면(벽, y=0 부근) 프레임
     draw_cube(-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) 
     draw_cube(W-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) 
     draw_cube(-f_tk/2, 0, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, COLOR_FRAME_LINE) 
@@ -540,23 +544,15 @@ if uploaded_file:
                                 with c_info:
                                     st.markdown(f"#### {t.name}")
                                     
-                                    # --- [수정] 1. 적재율 계산 방식 변경 (제한높이 1300mm 기준 체적) ---
-                                    # 트럭의 제한 체적 계산: 폭 * 길이 * 제한높이(1300)
-                                    # 박스의 체적 합계 계산
+                                    # 1. 적재율 계산 방식 변경 (제한높이 1300mm 기준 체적)
                                     limit_h = 1300
-                                    truck_limit_vol = t.w * t.d * limit_h # t.d is length in class logic? No, check class.
-                                    # Truck init: w, h, d(length). So t.d is length.
-                                    # NOTE: Class Truck init: (w, h, d, max_weight...). But TRUCK_DB has 'l'. 
-                                    # Class uses 'd' as length.
-                                    
+                                    truck_limit_vol = t.w * t.d * limit_h 
                                     used_vol = sum([b.volume for b in t.items])
-                                    total_limit_vol = t.w * t.d * limit_h
                                     
                                     vol_pct = 0
-                                    if total_limit_vol > 0:
-                                        vol_pct = min(1.0, used_vol / total_limit_vol)
+                                    if truck_limit_vol > 0:
+                                        vol_pct = min(1.0, used_vol / truck_limit_vol)
                                     
-                                    # 기존 중량 퍼센트도 계산은 해둠 (정보 표시용)
                                     weight_pct = min(1.0, t.total_weight / t.max_weight)
 
                                     st.progress(vol_pct, text=f"📏 체적 적재율 (1.3m기준): {vol_pct*100:.1f}%")
@@ -564,12 +560,11 @@ if uploaded_file:
                                     
                                     st.divider()
 
-                                    # --- [추가] 2. 무게 분포도 (4분면) ---
+                                    # 2. 무게 분포도 (4분면) - [수정됨: 앞/뒤 로직 반전]
                                     st.markdown("##### ⚖️ 무게 분포 (4분면)")
                                     
-                                    # 중심점 기준 (길이방향 절반, 폭방향 절반)
-                                    # Truck Length direction is Y (0~L). Front is near L (Cab). Rear is near 0.
-                                    # Truck Width direction is X (0~W).
+                                    # Y축: 0(벽, 앞쪽) ~ L(후미등, 뒤쪽)
+                                    # X축: 0(왼쪽) ~ W(오른쪽)
                                     mid_y = t.d / 2  # 길이의 절반
                                     mid_x = t.w / 2  # 폭의 절반
                                     
@@ -584,9 +579,9 @@ if uploaded_file:
                                         cy = item.y + item.d / 2
                                         w = item.weight
                                         
-                                        # Y가 크면 앞쪽(운전석), 작으면 뒤쪽
-                                        is_front = cy >= mid_y
-                                        # X가 작으면 왼쪽, 크면 오른쪽 (보는 시점에 따라 다르나 기준 고정)
+                                        # [수정] y값이 작을수록(0에 가까울수록) 앞쪽(Front, 벽면)
+                                        # y값이 클수록(L에 가까울수록) 뒤쪽(Rear, 후미등)
+                                        is_front = cy < mid_y 
                                         is_left = cx < mid_x
                                         
                                         if is_front and is_left: q_front_left += w
