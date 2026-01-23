@@ -6,7 +6,7 @@ import math
 import uuid
 
 # ==========================================
-# 1. 커스텀 물리 엔진 (핵심 로직 유지 + 밸런싱 추가)
+# 1. 커스텀 물리 엔진 (핵심 로직 유지 + 산 모양 적재)
 # ==========================================
 class Box:
     def __init__(self, name, w, h, d, weight):
@@ -45,22 +45,17 @@ class Truck:
         if self.total_weight + item.weight > self.max_weight:
             return False
         
-        # --- [수정] 좌우 무게 밸런싱 로직 (Zig-Zag 적재) ---
-        # 현재 적재된 박스들의 좌/우 무게 계산
-        center_x = self.w / 2
-        left_weight = sum(i.weight for i in self.items if i.x + i.w/2 < center_x)
-        right_weight = sum(i.weight for i in self.items if i.x + i.w/2 >= center_x)
+        # --- [수정] Center-Out (산 모양) 적재 로직 ---
+        # 트럭의 폭 중앙선 계산
+        center_line = self.w / 2
         
-        # 피벗 정렬: Z(낮은순) -> Y(안쪽순) -> X(좌우 밸런스 고려)
-        # 왼쪽이 더 무거우면 -> 오른쪽(X 큰값)부터 채우기 위해 X 내림차순 정렬
-        # 오른쪽이 더 무거우면 -> 왼쪽(X 작은값)부터 채우기 위해 X 오름차순 정렬
-        if left_weight > right_weight:
-            # Right First (Desc X)
-            self.pivots.sort(key=lambda p: (p[2], p[1], -p[0]))
-        else:
-            # Left First (Asc X) - Default
-            self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
-        # -----------------------------------------------
+        # 피벗 정렬 우선순위:
+        # 1순위: Z (낮은 곳부터 - 바닥 우선)
+        # 2순위: Y (안쪽 깊은 곳부터 - 0에 가까운 순)
+        # 3순위: X (중앙에 가까운 순) 
+        #    -> (현재 피벗 X + 박스절반)이 트럭 중앙선(center_line)과 얼마나 차이나는지 절대값(abs)으로 정렬
+        #    -> 이렇게 하면 박스가 정중앙에 놓일 수 있는 피벗을 가장 먼저 찾습니다.
+        self.pivots.sort(key=lambda p: (p[2], p[1], abs((p[0] + item.w / 2) - center_line)))
         
         for p in self.pivots:
             px, py, pz = p
