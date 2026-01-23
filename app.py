@@ -4,10 +4,9 @@ import plotly.graph_objects as go
 import numpy as np
 import math
 import uuid
-from itertools import groupby
 
 # ==========================================
-# 1. 커스텀 물리 엔진
+# 1. 커스텀 물리 엔진 (핵심 로직 유지)
 # ==========================================
 class Box:
     def __init__(self, name, w, h, d, weight):
@@ -46,9 +45,7 @@ class Truck:
         if self.total_weight + item.weight > self.max_weight:
             return False
         
-        # --- [수정] 피벗 로직: 안전 최우선 (왼쪽 밀착 적재) ---
-        # Z(낮은순) -> Y(안쪽순) -> X(왼쪽순)
-        # 빈 공간 없이 왼쪽 벽부터 채워나갑니다.
+        # 피벗 정렬: Z(낮은순) -> Y(안쪽순) -> X(왼쪽순)
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
         
         for p in self.pivots:
@@ -91,7 +88,7 @@ class Truck:
         
         if fit:
             self.pivots.append([item.x + item.w, item.y, item.z])
-            # [규칙] 길이 방향(y) 간격 유지
+            # [수정] 길이 방향(y)으로 다음에 박스를 놓을 때는 BOX_GAP_L(300mm) 만큼 띄워서 피벗 생성
             self.pivots.append([item.x, item.y + item.d + BOX_GAP_L, item.z])
             self.pivots.append([item.x, item.y, item.z + item.h])
         return fit
@@ -175,40 +172,8 @@ def load_data(df):
     return items
 
 def run_optimization(all_items):
+    # [수정] 차량 길이 여유 20cm (200mm)
     MARGIN_LENGTH = 200 
-
-    # --- [유지] Mound Sorting Algorithm (무게 밸런싱) ---
-    # 무거운 것이 리스트의 중간에 오도록 정렬 (가벼움 -> 무거움 -> 가벼움)
-    def mound_sort_group(group_items):
-        # 무게 오름차순 정렬
-        s_items = sorted(group_items, key=lambda x: x.weight)
-        result = [None] * len(s_items)
-        left = 0
-        right = len(s_items) - 1
-        
-        for i, item in enumerate(s_items):
-            if i % 2 == 0:
-                result[left] = item
-                left += 1
-            else:
-                result[right] = item
-                right -= 1
-        return result
-
-    def get_balanced_sorted_items(items_to_sort):
-        # 1. 길이(d) 내림차순으로 1차 정렬 (적재 효율성 유지)
-        primary_sorted = sorted(items_to_sort, key=lambda x: x.d, reverse=True)
-        
-        final_list = []
-        # 2. 같은 길이(또는 규격)를 가진 박스끼리 그룹핑
-        for k, g in groupby(primary_sorted, key=lambda x: (x.w, x.h, x.d)):
-            group_list = list(g)
-            # 3. 그룹 내에서 Mound Sort 적용 (무게 밸런싱)
-            if len(group_list) > 2:
-                final_list.extend(mound_sort_group(group_list))
-            else:
-                final_list.extend(sorted(group_list, key=lambda x: x.weight, reverse=True))
-        return final_list
 
     def solve_remaining_greedy(current_items):
         used = []
@@ -220,9 +185,7 @@ def run_optimization(all_items):
                 effective_l = spec['l'] - MARGIN_LENGTH
                 t = Truck(t_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
                 
-                # 밸런싱 정렬 적용
-                test_i = get_balanced_sorted_items(rem)
-                
+                test_i = sorted(rem, key=lambda x: x.d, reverse=True)
                 count = 0
                 w_sum = 0
                 for item in test_i:
@@ -256,9 +219,7 @@ def run_optimization(all_items):
         effective_l = spec['l'] - MARGIN_LENGTH
         start_truck = Truck(start_truck_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
         
-        # 초기 적재 시에도 밸런싱 정렬 적용
-        items_sorted = get_balanced_sorted_items(all_items)
-        
+        items_sorted = sorted(all_items, key=lambda x: x.d, reverse=True)
         for item in items_sorted:
              new_box = Box(item.name, item.w, item.h, item.d, item.weight)
              new_box.is_heavy = getattr(item, 'is_heavy', False)
@@ -293,7 +254,7 @@ def run_optimization(all_items):
 # ==========================================
 # 4. 시각화
 # ==========================================
-def draw_truck_3d(truck, camera_view="iso", show_box_id=True):
+def draw_truck_3d(truck, camera_view="iso"):
     fig = go.Figure()
     original_name = truck.name.split(' (')[0]
     spec = TRUCK_DB.get(original_name, TRUCK_DB["5톤"])
@@ -328,13 +289,19 @@ def draw_truck_3d(truck, camera_view="iso", show_box_id=True):
     # 메인 바닥판
     draw_cube(0, 0, -ch_h, W, L, ch_h, '#AAAAAA', COLOR_FRAME)
     
-    # 프레임
+    # 앞면(운전석쪽, y=L 부근) - 코드상 프레임 위치이지만 시각적으로는 여기가 뒤(Tail)
+    # 헷갈림 방지: draw_truck_3d 내에서 L 좌표는 후미등이 있는 끝부분(Rear)임.
+    # 하지만 0 좌표는 막혀있는 벽(Front)임.
+    
+    # 옆 프레임들
     draw_cube(-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) 
     draw_cube(W-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE)
     draw_cube(-f_tk/2, L-f_tk, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, COLOR_FRAME_LINE)
     
+    # 범퍼 (y=L 위치, 후미)
     draw_cube(-f_tk/2, L, -ch_h-bmp_h, W+f_tk, f_tk, bmp_h, '#222222') 
     
+    # 후미등 (y=L 보다 뒤, 후미)
     light_y = L + f_tk
     light_z = -ch_h-bmp_h+40 
     light_w = 60; light_h = 20; light_d = 60
@@ -343,20 +310,22 @@ def draw_truck_3d(truck, camera_view="iso", show_box_id=True):
 
     # 왼쪽 후미등 세트
     left_start = -f_tk/2 + margin_in
-    draw_cube(left_start, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000') 
-    draw_cube(left_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') 
-    draw_cube(left_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA') 
+    draw_cube(left_start, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000') # 빨강
+    draw_cube(left_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') # 주황
+    draw_cube(left_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA') # 흰색
 
     # 오른쪽 후미등 세트
     right_start = (W + f_tk/2) - margin_in - (light_w * 3)
-    draw_cube(right_start, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA') 
-    draw_cube(right_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') 
-    draw_cube(right_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000') 
+    draw_cube(right_start, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA') # 흰색
+    draw_cube(right_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600') # 주황
+    draw_cube(right_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000') # 빨강
 
+    # 전면(벽, y=0 부근) 프레임
     draw_cube(-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) 
     draw_cube(W-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE) 
     draw_cube(-f_tk/2, 0, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, COLOR_FRAME_LINE) 
 
+    # 천장 프레임
     draw_cube(-f_tk/2, 0, Real_H, f_tk, L, f_tk, COLOR_FRAME, COLOR_FRAME_LINE) 
     draw_cube(W-f_tk/2, 0, Real_H, f_tk, L, f_tk, COLOR_FRAME, COLOR_FRAME_LINE) 
 
@@ -407,6 +376,7 @@ def draw_truck_3d(truck, camera_view="iso", show_box_id=True):
     draw_arrow_dim([-OFFSET, 0, 0], [-OFFSET, L, 0], f"길이 : {int(L)}")
     draw_arrow_dim([-OFFSET, L, 0], [-OFFSET, L, LIMIT_H], f"높이제한(최대4단) : {LIMIT_H}", color='red')
 
+    # 높이 제한 평면
     fig.add_trace(go.Scatter3d(
         x=[0, W, W, 0, 0], y=[0, 0, L, L, 0], z=[LIMIT_H]*5,
         mode='lines', line=dict(color='red', width=4, dash='dash'),
@@ -427,15 +397,12 @@ def draw_truck_3d(truck, camera_view="iso", show_box_id=True):
             opacity=0.0, hoverinfo='text',
             hovertext=f"<b>📦 {item.name}</b><br>규격: {int(item.w)}x{int(item.d)}x{int(item.h)}<br>중량: {int(item.weight):,}kg<br>적재단수: {item.level}단"
         ))
-        
-        # [수정] 박스 번호 표시 여부 체크
-        if show_box_id:
-            annotations.append(dict(
-                x=item.x + item.w/2, y=item.y + item.d/2, z=item.z + item.h/2,
-                text=f"<b>{item.name}</b>",
-                xanchor="center", yanchor="middle", showarrow=False,
-                font=dict(color="black", size=11), bgcolor="rgba(255,255,255,0.5)"
-            ))
+        annotations.append(dict(
+            x=item.x + item.w/2, y=item.y + item.d/2, z=item.z + item.h/2,
+            text=f"<b>{item.name}</b>",
+            xanchor="center", yanchor="middle", showarrow=False,
+            font=dict(color="black", size=11), bgcolor="rgba(255,255,255,0.5)"
+        ))
 
     # 5. 카메라 설정
     if camera_view == "top": eye = dict(x=0, y=0.01, z=2.5); up = dict(x=0, y=1, z=0)
@@ -455,8 +422,7 @@ def draw_truck_3d(truck, camera_view="iso", show_box_id=True):
 # 5. 메인 UI
 # ==========================================
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
-# [수정] 규칙 텍스트 진하게 표시
-st.markdown("✅ **규칙 : 비용최소화 | 회전금지 | 길이우선 적재 | 1.3m 높이제한 | 최대 4단적재 | 바닥면 80% 지지충족 | 하중제한 준수 | 차량길이 20cm 여유 | 박스간 간격(길이방향) 30cm 여유 | 상위 10% 중량박스 빨간색 표시 | 안전 우선 적재(밴딩 무너짐 고려)**")
+st.caption("✅ 규칙 : 비용최소화 | 회전금지 | 길이우선 적재 | 1.3m 높이제한 | 최대 4단적재 | 바닥면 80% 지지충족 | 하중제한 준수 | 차량길이 20cm 여유 | 박스간 간격(길이방향) 30cm 여유 | 상위 10% 중량박스 빨간색 표시")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
@@ -567,10 +533,6 @@ if uploaded_file:
                         if "Iso" in view_mode: st.session_state['view_mode'] = 'iso'
                         elif "Top" in view_mode: st.session_state['view_mode'] = 'top'
                         else: st.session_state['view_mode'] = 'side'
-                        
-                        st.write("") # Spacer
-                        # [수정] 박스 번호 표시 ON/OFF 체크박스
-                        show_box_id = st.checkbox("✅ 박스 번호 표시", value=True)
 
                     with c_tabs:
                         tabs = st.tabs([f"{t.name}" for t in trucks])
@@ -598,47 +560,51 @@ if uploaded_file:
                                     
                                     st.divider()
 
-                                    # 2. 무게 분포도 (4분면) - [수정됨: UI 표시 기준 좌/우 반전 적용]
+                                    # 2. 무게 분포도 (4분면) - [수정됨: 면적 기반 계산]
                                     st.markdown("##### ⚖️ 무게 분포 (4분면)")
                                     
-                                    mid_y = t.d / 2  
-                                    mid_x = t.w / 2  
+                                    # 사분면 경계 설정
+                                    mid_y = t.d / 2  # 길이의 절반 (Front ~ Rear 경계)
+                                    mid_x = t.w / 2  # 폭의 절반 (Left ~ Right 경계)
                                     
                                     q_front_left = 0.0
                                     q_front_right = 0.0
                                     q_rear_left = 0.0
                                     q_rear_right = 0.0
                                     
+                                    # 겹치는 면적 계산 함수
                                     def calc_overlap(b_x1, b_x2, b_y1, b_y2, q_x1, q_x2, q_y1, q_y2):
                                         x_overlap = max(0, min(b_x2, q_x2) - max(b_x1, q_x1))
                                         y_overlap = max(0, min(b_y2, q_y2) - max(b_y1, q_y1))
                                         return x_overlap * y_overlap
 
                                     for item in t.items:
+                                        # 박스의 좌표 범위
                                         b_x1, b_x2 = item.x, item.x + item.w
                                         b_y1, b_y2 = item.y, item.y + item.d
                                         box_area = item.w * item.d
                                         
                                         if box_area <= 0: continue
-                                        
-                                        # Front (y < mid_y) / Rear (y >= mid_y)
-                                        # Left (User) -> Right (Code mid_x~W)
-                                        # Right (User) -> Left (Code 0~mid_x)
-                                        
-                                        overlap_fl = calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, 0, mid_y)
+
+                                        # Front-Left (x: 0~mid_x, y: 0~mid_y) *Note: y=0 is Front
+                                        overlap_fl = calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, 0, mid_y)
                                         q_front_left += item.weight * (overlap_fl / box_area)
-                                        
-                                        overlap_fr = calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, 0, mid_y)
+
+                                        # Front-Right (x: mid_x~W, y: 0~mid_y)
+                                        overlap_fr = calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, 0, mid_y)
                                         q_front_right += item.weight * (overlap_fr / box_area)
-                                        
-                                        overlap_rl = calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, mid_y, t.d)
+
+                                        # Rear-Left (x: 0~mid_x, y: mid_y~L)
+                                        overlap_rl = calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d)
                                         q_rear_left += item.weight * (overlap_rl / box_area)
-                                        
-                                        overlap_rr = calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d)
+
+                                        # Rear-Right (x: mid_x~W, y: mid_y~L)
+                                        overlap_rr = calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, mid_y, t.d)
                                         q_rear_right += item.weight * (overlap_rr / box_area)
                                     
                                     total_w = t.total_weight if t.total_weight > 0 else 1
                                     
+                                    # 2x2 그리드로 표시
                                     c_q1, c_q2 = st.columns(2)
                                     with c_q1:
                                         st.metric("앞-좌", f"{q_front_left/total_w*100:.0f}%", f"{int(q_front_left)}kg", delta_color="off")
@@ -663,8 +629,7 @@ if uploaded_file:
                                         st.dataframe(box_data, hide_index=True)
 
                                 with c_chart:
-                                    # [수정] 박스 번호 ON/OFF 값 전달
-                                    st.plotly_chart(draw_truck_3d(t, st.session_state['view_mode'], show_box_id), use_container_width=True)
+                                    st.plotly_chart(draw_truck_3d(t, st.session_state['view_mode']), use_container_width=True)
 
                 else: st.warning("적재 가능한 차량을 찾지 못했습니다.")
     except Exception as e: st.error(f"오류 발생: {e}")
