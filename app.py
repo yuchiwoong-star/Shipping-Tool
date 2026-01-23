@@ -191,7 +191,8 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
 
     # [내부함수] 밴딩을 위한 피라미드 정렬 (높이 기준 Mound Sort)
     def mound_sort_by_height(items):
-        s_items = sorted(items, key=lambda x: x.h, reverse=True)
+        # [수정] 오름차순(낮은 것 -> 높은 것) 정렬해야 양 끝이 낮고 가운데가 높아짐
+        s_items = sorted(items, key=lambda x: x.h, reverse=False) 
         result = [None] * len(s_items)
         left = 0
         right = len(s_items) - 1
