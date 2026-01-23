@@ -521,18 +521,20 @@ if uploaded_file:
         for col in ['적재폭 (mm)', '적재길이 (mm)', '허용하중 (kg)', '운송단가 (원)']: df_truck[col] = df_truck[col].apply(lambda x: f"{x:,.0f}")
         st.dataframe(df_truck, use_container_width=True, hide_index=True, column_config={c: st.column_config.Column(width="medium") for c in df_truck.columns})
 
-        # [3] 최적 배차 실행 버튼 (버튼을 눌렀을 때만 계산하도록 로직 변경)
+      # [3] 최적 배차 실행 버튼 (로딩 애니메이션 추가)
         if st.button("최적 배차 실행 (최소비용)", type="primary"):
-            items = load_data(df)
-            if not items:
-                st.error("데이터 변환 실패.")
-            else:
-                # 여기서만 최적화 실행
-                trucks = run_optimization(items, opt_height, gap_mm, opt_level)
-                
-                # 결과와 *당시 사용된 옵션값*을 세션 스테이트에 저장
-                st.session_state['optimized_result'] = trucks
-                st.session_state['calc_opt_height'] = opt_height
+            # spinner: 계산이 끝날 때까지 뺑글뺑글 도는 UI 표시
+            with st.spinner('최적의 차량 조합을 계산 중입니다... 잠시만 기다려주세요 ⏳'):
+                items = load_data(df)
+                if not items:
+                    st.error("데이터 변환 실패.")
+                else:
+                    # 여기서만 최적화 실행
+                    trucks = run_optimization(items, opt_height, gap_mm, opt_level)
+                    
+                    # 결과와 *당시 사용된 옵션값*을 세션 스테이트에 저장
+                    st.session_state['optimized_result'] = trucks
+                    st.session_state['calc_opt_height'] = opt_height
         
         # 결과 화면 표시 (저장된 결과가 있을 때만 표시)
         if 'optimized_result' in st.session_state:
