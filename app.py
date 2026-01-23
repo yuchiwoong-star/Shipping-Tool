@@ -454,7 +454,7 @@ def draw_truck_3d(truck, camera_view="iso"):
 # 5. 메인 UI
 # ==========================================
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
-st.caption("✅ 규칙 : 비용최소화 | 회전금지 | 길이우선 적재 | 1.3m 높이제한 | 최대 4단적재 | 바닥면 80% 지지충족 | 하중제한 준수 | 차량길이 20cm 여유 | 박스간 간격(길이방향) 30cm 여유 | 상위 10% 중량박스 빨간색 표시")
+st.markdown("✅ **규칙 : 비용최소화 | 회전금지 | 길이우선 적재 | 1.3m 높이제한 | 최대 4단적재 | 바닥면 80% 지지충족 | 하중제한 준수 | 차량길이 20cm 여유 | 박스간 간격(길이방향) 30cm 여유 | 상위 10% 중량박스 빨간색 표시 | 안전 우선 적재(밴딩 무너짐 고려)**")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
