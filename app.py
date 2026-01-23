@@ -367,7 +367,7 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
 # ==========================================
 # 4. 시각화
 # ==========================================
-def draw_truck_3d(truck):
+def draw_truck_3d(truck, limit_count=None):
     fig = go.Figure()
     
     # [수정] 이름 파싱 로직 변경 (5톤 (#1) -> 5톤)
@@ -444,8 +444,11 @@ def draw_truck_3d(truck):
     draw_arrow_dim([-OFFSET, L, 0], [-OFFSET, L, LIMIT_H], f"높이제한 : {int(LIMIT_H)}", color='red')
     fig.add_trace(go.Scatter3d(x=[0, W, W, 0, 0], y=[0, 0, L, L, 0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False, hoverinfo='skip'))
 
+    # 박스 그리기 (슬라이더 값만큼만 표시)
+    items_to_draw = truck.items[:limit_count] if limit_count is not None else truck.items
+    
     annotations = []
-    for item in truck.items:
+    for item in items_to_draw:
         col = '#FF6B6B' if item.is_heavy else '#FAD7A0'
         hover_text = f"<b>📦 {item.name}</b><br>규격: {int(item.w)}x{int(item.d)}x{int(item.h)}<br>중량: {int(item.weight):,}kg<br>적재단수: {item.level}단"
         
@@ -568,10 +571,13 @@ if uploaded_file:
                 for i, tab in enumerate(tabs):
                     with tab:
                         t = trucks[i]
+                        
+                        # [추가] 적재 순서 시뮬레이션 슬라이더
+                        total_items = len(t.items)
+                        step = st.slider(f"🏗️ 적재 순서 시뮬레이션 (1 ~ {total_items})", 1, total_items, total_items, key=f"slider_{i}")
+                        
                         c_info, c_chart = st.columns([1, 3]) 
                         with c_info:
-                            # [수정] 중복된 헤더 (#### [1] 5톤 등) 제거함
-                            
                             truck_limit_vol = t.w * t.d * display_height 
                             used_vol = sum([b.vol for b in t.items])
                             vol_pct = min(1.0, used_vol / truck_limit_vol) if truck_limit_vol > 0 else 0
@@ -616,6 +622,7 @@ if uploaded_file:
                                 st.dataframe([{"박스명": b.name, "단수": f"{b.level}단"} for b in t.items], hide_index=True)
 
                         with c_chart:
-                            st.plotly_chart(draw_truck_3d(t), use_container_width=True)
+                            # [추가] limit_count 전달
+                            st.plotly_chart(draw_truck_3d(t, limit_count=step), use_container_width=True)
             else: st.warning("적재 가능한 차량을 찾지 못했습니다.")
     except Exception as e: st.error(f"오류 발생: {e}")
