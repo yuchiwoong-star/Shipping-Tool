@@ -178,10 +178,64 @@ def load_data(df):
         pass
     return items
 
+# ==========================================
+# [신규 추가] 재배치 로직 및 최적화 함수 수정
+# ==========================================
+
+# 1. 밴딩을 위한 피라미드 정렬 (높이 기준 Mound Sort)
+def mound_sort_by_height(items):
+    # 높이 내림차순 정렬 (가장 높은게 먼저)
+    s_items = sorted(items, key=lambda x: x.h, reverse=True)
+    result = [None] * len(s_items)
+    left = 0
+    right = len(s_items) - 1
+    
+    # [중간, 높음, 가장높음, 높음, 중간] 형태로 배치하여 
+    # 순차 적재 시 자연스럽게 산(Mound) 모양이 되도록 유도
+    for i, item in enumerate(s_items):
+        if i % 2 == 1: # 홀수번째는 왼쪽
+            result[left] = item
+            left += 1
+        else: # 짝수번째는 오른쪽
+            result[right] = item
+            right -= 1
+    return result
+
+# 2. 무게중심 중앙 정렬 (X축 이동)
+def recenter_truck_items(truck):
+    if not truck.items:
+        return
+    
+    # 현재 적재된 화물의 X축(폭) 범위 계산
+    min_x = min(item.x for item in truck.items)
+    max_x = max(item.x + item.w for item in truck.items)
+    load_width = max_x - min_x
+    
+    # 차량 폭 대비 남는 공간 계산
+    remaining_space = truck.w - load_width
+    
+    # 이동해야 할 거리 (양쪽 여백을 동일하게 맞춤)
+    offset_x = remaining_space / 2.0
+    
+    # 이미 중앙에 있거나, 공간이 없으면 패스
+    if offset_x <= 0.1:
+        return
+
+    # 모든 박스 이동
+    for item in truck.items:
+        item.x += offset_x
+    
+    # 피벗(빈공간 좌표)들도 함께 이동 (시각화나 추가 적재를 위해)
+    new_pivots = []
+    for p in truck.pivots:
+        new_pivots.append([p[0] + offset_x, p[1], p[2]])
+    truck.pivots = new_pivots
+
+# 3. 메인 최적화 실행 함수 (재배치 로직 포함)
 def run_optimization(all_items):
     MARGIN_LENGTH = 200 
 
-    # [유지] 하이브리드 정렬 (장축 우선 -> 폭 우선 -> 길이 우선)
+    # [기존 유지] 하이브리드 정렬
     def get_hybrid_sorted_items(items_to_sort):
         return sorted(items_to_sort, key=lambda x: (
             1 if x.d >= 2200 else 0,
@@ -190,7 +244,7 @@ def run_optimization(all_items):
             x.weight
         ), reverse=True)
 
-    # [유지] Mound Sort (무게 밸런싱)
+    # [기존 유지] 그룹별 밸런싱 정렬
     def mound_sort_group(group_items):
         s_items = sorted(group_items, key=lambda x: x.weight)
         result = [None] * len(s_items)
@@ -209,6 +263,7 @@ def run_optimization(all_items):
             else: final_list.extend(sorted(group_list, key=lambda x: x.weight, reverse=True))
         return final_list
 
+    # [기존 유지] 남은 짐 그리디 처리
     def solve_remaining_greedy(current_items):
         used_trucks = []
         rem = current_items[:]
@@ -230,11 +285,15 @@ def run_optimization(all_items):
             for t_name, spec in candidates:
                 t = Truck(t_name, spec['w'], 1300, spec['l'] - MARGIN_LENGTH, spec['weight'], spec['cost'])
                 count = 0; w_sum = 0
+                temp_items = [] 
+                
+                # 시뮬레이션용 복사본 사용
                 for item in rem:
                     new_box = Box(item.name, item.w, item.h, item.d, item.weight)
                     new_box.is_heavy = item.is_heavy
                     if t.put_item(new_box):
                         count += 1; w_sum += item.weight
+                        temp_items.append(item) # 성공한 원본 아이템 기록
                 
                 if count > 0:
                     eff = w_sum / spec['cost']
@@ -251,17 +310,21 @@ def run_optimization(all_items):
             else: break 
         return used_trucks
 
+    # --- 메인 로직 시작 ---
     best_solution = None
     min_total_cost = float('inf')
     
     total_all_weight = sum(i.weight for i in all_items)
     sorted_all_items = get_balanced_sorted_items(all_items)
     
+    # 첫 차량을 바꿔가며 최적 조합 탐색
     for start_truck_name in TRUCK_DB:
         spec = TRUCK_DB[start_truck_name]
         if total_all_weight > 15000 and spec['weight'] < 4000: continue
 
         start_truck = Truck(start_truck_name, spec['w'], 1300, spec['l'] - MARGIN_LENGTH, spec['weight'], spec['cost'])
+        
+        # 첫 트럭 적재 시도
         for item in sorted_all_items:
              new_box = Box(item.name, item.w, item.h, item.d, item.weight)
              new_box.is_heavy = item.is_heavy
@@ -277,6 +340,7 @@ def run_optimization(all_items):
             sub_solution = solve_remaining_greedy(remaining)
             current_solution.extend(sub_solution)
         
+        # 모든 짐이 실렸는지 확인 (단순 개수 비교)
         total_packed_count = sum([len(t.items) for t in current_solution])
         if total_packed_count < len(all_items): continue
 
@@ -287,12 +351,37 @@ def run_optimization(all_items):
     
     final_trucks = []
     if best_solution:
-        # [수정] 톤수 오름차순(작은 차 -> 큰 차) 정렬
+        # 톤수 오름차순 정렬
         best_solution.sort(key=lambda t: t.max_weight)
+        
         for idx, t in enumerate(best_solution):
-            # [수정] 이름 포맷 변경: [1] 5톤, [2] 11톤 ...
+            # [재배치 단계 1] 확정된 차량 내에서 '높이' 기준 피라미드 정렬 후 재적재
+            # 이유: 밴딩 시 가운데가 높아야 안전함
+            items_in_truck = t.items[:] # 현재 적재된 아이템 복사
+            
+            # 트럭 초기화 (재적재를 위해)
+            t.items = []
+            t.pivots = [[0.0, 0.0, 0.0]]
+            t.total_weight = 0.0
+            
+            # 높이 기준 Mound Sort 적용 (낮음 -> 높음 -> 낮음)
+            # Box 객체를 새로 생성해서 넣어줘야 좌표가 초기화됨
+            reordered_items = mound_sort_by_height(items_in_truck)
+            
+            for item in reordered_items:
+                if item is None: continue
+                retry_box = Box(item.name, item.w, item.h, item.d, item.weight)
+                retry_box.is_heavy = item.is_heavy
+                t.put_item(retry_box)
+
+            # [재배치 단계 2] 무게중심 중앙 정렬 (Centering)
+            # 이유: 한쪽으로 쏠림 방지 및 무게 배분
+            recenter_truck_items(t)
+
+            # 이름 포맷 설정
             t.name = f"[{idx+1}] {t.name}"
             final_trucks.append(t)
+
     return final_trucks
 
 # ==========================================
