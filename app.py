@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 import numpy as np
 import math
 import uuid
+import time # 로딩 지연 효과를 위해 추가
 from itertools import groupby
 
 # ==========================================
@@ -521,20 +522,33 @@ if uploaded_file:
         for col in ['적재폭 (mm)', '적재길이 (mm)', '허용하중 (kg)', '운송단가 (원)']: df_truck[col] = df_truck[col].apply(lambda x: f"{x:,.0f}")
         st.dataframe(df_truck, use_container_width=True, hide_index=True, column_config={c: st.column_config.Column(width="medium") for c in df_truck.columns})
 
-      # [3] 최적 배차 실행 버튼 (로딩 애니메이션 추가)
+        # [3] 최적 배차 실행 버튼 (상태 진행바 st.status 적용)
         if st.button("최적 배차 실행 (최소비용)", type="primary"):
-            # spinner: 계산이 끝날 때까지 뺑글뺑글 도는 UI 표시
-            with st.spinner('최적의 차량 조합을 계산 중입니다... 잠시만 기다려주세요 ⏳'):
+            
+            # [변경] spinner 대신 status 사용
+            with st.status("🚀 최적의 차량 조합을 분석 중입니다... (잠시만 기다려주세요)", expanded=True) as status:
+                st.write("1. 데이터를 읽고 변환하고 있습니다...")
+                time.sleep(0.1) 
+                
                 items = load_data(df)
                 if not items:
                     st.error("데이터 변환 실패.")
+                    status.update(label="오류 발생", state="error")
                 else:
+                    st.write("2. 최적화 엔진 가동 중... (물량에 따라 시간이 소요됩니다)")
+                    time.sleep(0.1) 
+                    
                     # 여기서만 최적화 실행
                     trucks = run_optimization(items, opt_height, gap_mm, opt_level)
+                    
+                    st.write("3. 결과 집계 및 시각화 준비 중...")
                     
                     # 결과와 *당시 사용된 옵션값*을 세션 스테이트에 저장
                     st.session_state['optimized_result'] = trucks
                     st.session_state['calc_opt_height'] = opt_height
+                    
+                    time.sleep(0.2)
+                    status.update(label="배차 분석 완료! 👇 아래 결과를 확인하세요.", state="complete", expanded=False)
         
         # 결과 화면 표시 (저장된 결과가 있을 때만 표시)
         if 'optimized_result' in st.session_state:
