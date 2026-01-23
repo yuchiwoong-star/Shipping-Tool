@@ -46,7 +46,7 @@ class Truck:
         if self.total_weight + item.weight > self.max_weight:
             return False
         
-        # --- [수정] 피벗 로직 원복 (안전 최우선: 한쪽 방향 밀착 적재) ---
+        # --- [수정] 피벗 로직: 안전 최우선 (왼쪽 밀착 적재) ---
         # Z(낮은순) -> Y(안쪽순) -> X(왼쪽순)
         # 빈 공간 없이 왼쪽 벽부터 채워나갑니다.
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
@@ -177,7 +177,7 @@ def load_data(df):
 def run_optimization(all_items):
     MARGIN_LENGTH = 200 
 
-    # --- [추가] Mound Sorting Algorithm ---
+    # --- [유지] Mound Sorting Algorithm (무게 밸런싱) ---
     # 무거운 것이 리스트의 중간에 오도록 정렬 (가벼움 -> 무거움 -> 가벼움)
     def mound_sort_group(group_items):
         # 무게 오름차순 정렬
@@ -201,14 +201,12 @@ def run_optimization(all_items):
         
         final_list = []
         # 2. 같은 길이(또는 규격)를 가진 박스끼리 그룹핑
-        # (부동소수점 오차 고려하여 문자열 키로 그룹핑하거나, 단순히 d값 기준)
         for k, g in groupby(primary_sorted, key=lambda x: (x.w, x.h, x.d)):
             group_list = list(g)
             # 3. 그룹 내에서 Mound Sort 적용 (무게 밸런싱)
             if len(group_list) > 2:
                 final_list.extend(mound_sort_group(group_list))
             else:
-                # 2개 이하면 그냥 무거운거 먼저 (기존 방식)
                 final_list.extend(sorted(group_list, key=lambda x: x.weight, reverse=True))
         return final_list
 
@@ -222,7 +220,7 @@ def run_optimization(all_items):
                 effective_l = spec['l'] - MARGIN_LENGTH
                 t = Truck(t_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
                 
-                # [수정] 밸런싱 정렬 적용
+                # 밸런싱 정렬 적용
                 test_i = get_balanced_sorted_items(rem)
                 
                 count = 0
@@ -258,7 +256,7 @@ def run_optimization(all_items):
         effective_l = spec['l'] - MARGIN_LENGTH
         start_truck = Truck(start_truck_name, spec['w'], 1300, effective_l, spec['weight'], spec['cost'])
         
-        # [수정] 초기 적재 시에도 밸런싱 정렬 적용
+        # 초기 적재 시에도 밸런싱 정렬 적용
         items_sorted = get_balanced_sorted_items(all_items)
         
         for item in items_sorted:
@@ -295,7 +293,7 @@ def run_optimization(all_items):
 # ==========================================
 # 4. 시각화
 # ==========================================
-def draw_truck_3d(truck, camera_view="iso"):
+def draw_truck_3d(truck, camera_view="iso", show_box_id=True):
     fig = go.Figure()
     original_name = truck.name.split(' (')[0]
     spec = TRUCK_DB.get(original_name, TRUCK_DB["5톤"])
@@ -429,12 +427,15 @@ def draw_truck_3d(truck, camera_view="iso"):
             opacity=0.0, hoverinfo='text',
             hovertext=f"<b>📦 {item.name}</b><br>규격: {int(item.w)}x{int(item.d)}x{int(item.h)}<br>중량: {int(item.weight):,}kg<br>적재단수: {item.level}단"
         ))
-        annotations.append(dict(
-            x=item.x + item.w/2, y=item.y + item.d/2, z=item.z + item.h/2,
-            text=f"<b>{item.name}</b>",
-            xanchor="center", yanchor="middle", showarrow=False,
-            font=dict(color="black", size=11), bgcolor="rgba(255,255,255,0.5)"
-        ))
+        
+        # [수정] 박스 번호 표시 여부 체크
+        if show_box_id:
+            annotations.append(dict(
+                x=item.x + item.w/2, y=item.y + item.d/2, z=item.z + item.h/2,
+                text=f"<b>{item.name}</b>",
+                xanchor="center", yanchor="middle", showarrow=False,
+                font=dict(color="black", size=11), bgcolor="rgba(255,255,255,0.5)"
+            ))
 
     # 5. 카메라 설정
     if camera_view == "top": eye = dict(x=0, y=0.01, z=2.5); up = dict(x=0, y=1, z=0)
@@ -454,6 +455,7 @@ def draw_truck_3d(truck, camera_view="iso"):
 # 5. 메인 UI
 # ==========================================
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
+# [수정] 규칙 텍스트 진하게 표시
 st.markdown("✅ **규칙 : 비용최소화 | 회전금지 | 길이우선 적재 | 1.3m 높이제한 | 최대 4단적재 | 바닥면 80% 지지충족 | 하중제한 준수 | 차량길이 20cm 여유 | 박스간 간격(길이방향) 30cm 여유 | 상위 10% 중량박스 빨간색 표시 | 안전 우선 적재(밴딩 무너짐 고려)**")
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = 'iso'
 
@@ -565,6 +567,10 @@ if uploaded_file:
                         if "Iso" in view_mode: st.session_state['view_mode'] = 'iso'
                         elif "Top" in view_mode: st.session_state['view_mode'] = 'top'
                         else: st.session_state['view_mode'] = 'side'
+                        
+                        st.write("") # Spacer
+                        # [수정] 박스 번호 표시 ON/OFF 체크박스
+                        show_box_id = st.checkbox("✅ 박스 번호 표시", value=True)
 
                     with c_tabs:
                         tabs = st.tabs([f"{t.name}" for t in trucks])
@@ -595,54 +601,44 @@ if uploaded_file:
                                     # 2. 무게 분포도 (4분면) - [수정됨: UI 표시 기준 좌/우 반전 적용]
                                     st.markdown("##### ⚖️ 무게 분포 (4분면)")
                                     
-                                    # 사분면 경계 설정
-                                    mid_y = t.d / 2  # 길이의 절반 (Front ~ Rear 경계)
-                                    mid_x = t.w / 2  # 폭의 절반 (Left ~ Right 경계)
+                                    mid_y = t.d / 2  
+                                    mid_x = t.w / 2  
                                     
                                     q_front_left = 0.0
                                     q_front_right = 0.0
                                     q_rear_left = 0.0
                                     q_rear_right = 0.0
                                     
-                                    # 겹치는 면적 계산 함수
                                     def calc_overlap(b_x1, b_x2, b_y1, b_y2, q_x1, q_x2, q_y1, q_y2):
                                         x_overlap = max(0, min(b_x2, q_x2) - max(b_x1, q_x1))
                                         y_overlap = max(0, min(b_y2, q_y2) - max(b_y1, q_y1))
                                         return x_overlap * y_overlap
 
                                     for item in t.items:
-                                        # 박스의 좌표 범위
                                         b_x1, b_x2 = item.x, item.x + item.w
                                         b_y1, b_y2 = item.y, item.y + item.d
                                         box_area = item.w * item.d
                                         
                                         if box_area <= 0: continue
                                         
-                                        # --- [수정된 매핑] ---
-                                        # 사용자가 "좌"라고 인식하는 영역 -> 실제 코드상 X가 큰 영역 (>= mid_x)
-                                        # 사용자가 "우"라고 인식하는 영역 -> 실제 코드상 X가 작은 영역 (< mid_x)
+                                        # Front (y < mid_y) / Rear (y >= mid_y)
+                                        # Left (User) -> Right (Code mid_x~W)
+                                        # Right (User) -> Left (Code 0~mid_x)
                                         
-                                        # Front (y < mid_y)
-                                        # Left (사용자 기준) -> Code Right (mid_x ~ W)
                                         overlap_fl = calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, 0, mid_y)
                                         q_front_left += item.weight * (overlap_fl / box_area)
                                         
-                                        # Right (사용자 기준) -> Code Left (0 ~ mid_x)
                                         overlap_fr = calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, 0, mid_y)
                                         q_front_right += item.weight * (overlap_fr / box_area)
                                         
-                                        # Rear (y >= mid_y)
-                                        # Left (사용자 기준) -> Code Right (mid_x ~ W)
                                         overlap_rl = calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, mid_y, t.d)
                                         q_rear_left += item.weight * (overlap_rl / box_area)
                                         
-                                        # Right (사용자 기준) -> Code Left (0 ~ mid_x)
                                         overlap_rr = calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d)
                                         q_rear_right += item.weight * (overlap_rr / box_area)
                                     
                                     total_w = t.total_weight if t.total_weight > 0 else 1
                                     
-                                    # 2x2 그리드로 표시
                                     c_q1, c_q2 = st.columns(2)
                                     with c_q1:
                                         st.metric("앞-좌", f"{q_front_left/total_w*100:.0f}%", f"{int(q_front_left)}kg", delta_color="off")
@@ -667,7 +663,8 @@ if uploaded_file:
                                         st.dataframe(box_data, hide_index=True)
 
                                 with c_chart:
-                                    st.plotly_chart(draw_truck_3d(t, st.session_state['view_mode']), use_container_width=True)
+                                    # [수정] 박스 번호 ON/OFF 값 전달
+                                    st.plotly_chart(draw_truck_3d(t, st.session_state['view_mode'], show_box_id), use_container_width=True)
 
                 else: st.warning("적재 가능한 차량을 찾지 못했습니다.")
     except Exception as e: st.error(f"오류 발생: {e}")
