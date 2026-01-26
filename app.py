@@ -38,7 +38,7 @@ class Box:
         self.area = self.w * self.d 
 
 class Truck:
-    def __init__(self, name, w, h, d, max_weight, cost, gap_mm=300, limit_level_on=True):
+    def __init__(self, name, w, h, d, max_weight, cost, gap_mm=300, max_layer=4):
         self.name = name
         self.w = float(w)
         self.h = float(h)
@@ -50,7 +50,7 @@ class Truck:
         # 피벗: (x, y, z)
         self.pivots = [[0.0, 0.0, 0.0]]
         self.gap_mm = gap_mm
-        self.limit_level_on = limit_level_on
+        self.max_layer = max_layer # 적재 단수 제한
 
     def put_item(self, item):
         BOX_GAP_L = self.gap_mm
@@ -77,7 +77,9 @@ class Truck:
                 fit_level = max_below_level + 1
             else: fit_level = 1
             
-            if self.limit_level_on and fit_level > 4: continue
+            # [수정] 단수 제한 체크
+            if fit_level > self.max_layer: continue
+            
             best_pivot = p
             break
         
@@ -220,7 +222,7 @@ st.markdown("""
         justify-content: center;
         align-items: center;
         font-size: 13px;
-        font-weight: bold;
+        font-weight: normal; /* 볼드 제거 */
         color: #000000;
         background-color: white;
     }
@@ -316,7 +318,7 @@ def load_data(df):
 # ==========================================
 # 3. 최적화 알고리즘
 # ==========================================
-def run_optimization(all_items, limit_h, gap_mm, limit_level_on, mode):
+def run_optimization(all_items, limit_h, gap_mm, max_layer_val, mode):
     MARGIN_LENGTH = 200 
 
     def sort_length_mode(items):
@@ -424,7 +426,7 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on, mode):
             spec = TRUCK_DB[start_truck_name]
             if total_w > 15000 and spec['weight'] < 4000: continue
 
-            t1 = Truck(start_truck_name, spec['w'], limit_h, spec['l'] - MARGIN_LENGTH, spec['weight'], spec['cost'], gap_mm, limit_level_on)
+            t1 = Truck(start_truck_name, spec['w'], limit_h, spec['l'] - MARGIN_LENGTH, spec['weight'], spec['cost'], gap_mm, max_layer_val)
             packed_in_t1 = []
             for item in sorted_items:
                 nb = Box(item.name, item.w, item.h, item.d, item.weight)
@@ -448,7 +450,7 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on, mode):
                     for tn in TRUCK_DB:
                         ts = TRUCK_DB[tn]
                         if rem_w > 10000 and ts['weight'] < 3500: continue
-                        t_cand = Truck(tn, ts['w'], limit_h, ts['l'] - MARGIN_LENGTH, ts['weight'], ts['cost'], gap_mm, limit_level_on)
+                        t_cand = Truck(tn, ts['w'], limit_h, ts['l'] - MARGIN_LENGTH, ts['weight'], ts['cost'], gap_mm, max_layer_val)
                         count = 0; w_sum = 0
                         for ri in rem_copy:
                             nb = Box(ri.name, ri.w, ri.h, ri.d, ri.weight)
@@ -635,7 +637,11 @@ opt_height = int(opt_height_str.replace("mm", ""))
 opt_gap_str = st.sidebar.radio("박스 간 간격 (길이방향)", options=["0mm", "100mm", "200mm", "300mm"], index=2, horizontal=True, on_change=clear_result)
 gap_mm = int(opt_gap_str.replace("mm", ""))
 
-opt_level = st.sidebar.checkbox("최대 4단 적재 제한", value=True, on_change=clear_result)
+# [단수 제한 수정: 라디오 버튼]
+opt_stack_limit = st.sidebar.radio("최대 적재 단수", ["3단", "4단", "제한없음"], index=1, horizontal=True, on_change=clear_result)
+if "3단" in opt_stack_limit: max_layer_val = 3
+elif "4단" in opt_stack_limit: max_layer_val = 4
+else: max_layer_val = 100 # 사실상 제한 없음
 
 if uploaded_file:
     try:
@@ -677,7 +683,7 @@ if uploaded_file:
                     status.update(label="오류 발생", state="error")
                 else:
                     time.sleep(0.1) 
-                    trucks = run_optimization(items, opt_height, gap_mm, opt_level, mode=mode_key)
+                    trucks = run_optimization(items, opt_height, gap_mm, max_layer_val, mode=mode_key)
                     st.session_state['optimized_result'] = trucks
                     st.session_state['calc_opt_height'] = opt_height
                     time.sleep(0.2)
@@ -691,6 +697,7 @@ if uploaded_file:
             with st.expander("📜 분석 History (Click to view details)", expanded=False):
                 st.write(f"- [System] 데이터 파일 로드 완료 ({len(df)}건)")
                 st.write(f"- [User] 선택 모드: {opt_mode}")
+                st.write(f"- [Option] 최대 적재 단수: {opt_stack_limit}")
                 st.write("- [Process] 1톤 ~ 25톤 트럭 시뮬레이션 시작...")
                 st.write("- [Process] 적재 알고리즘 수행 (Greedy Strategy)")
                 if mode_key == 'length':
@@ -706,7 +713,7 @@ if uploaded_file:
                 total_box_count = sum(len(t.items) for t in trucks)
                 total_trucks = len(trucks)
 
-                # 2. 통합 결과 요약 박스 (빨간색 테마 + 검정 글씨)
+                # 2. 통합 결과 요약 박스
                 st.markdown(f"""
                 <div class="result-summary-box">
                     <div class="result-title">✅ 배차 분석 완료!</div>
@@ -760,10 +767,9 @@ if uploaded_file:
                             q_rear_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d) / box_area)
                         total_w = t.total_weight if t.total_weight > 0 else 1
 
-                        # [상단 정보 그리드: 카드형]
+                        # [상단 정보 그리드]
                         c1, c2, c3 = st.columns([1, 1, 1.2])
                         
-                        # 1. 요약 정보
                         with c1:
                             st.markdown(f"""
                             <div class="dashboard-card">
@@ -776,7 +782,6 @@ if uploaded_file:
                             </div>
                             """, unsafe_allow_html=True)
                         
-                        # 2. 적재율 (HTML Custom Progress Bar - 빨간색 통일 #FF4B4B)
                         with c2:
                             vol_w = vol_pct * 100
                             wgt_w = weight_pct * 100
@@ -785,23 +790,22 @@ if uploaded_file:
                                 <span class="card-title">📉 적재율</span>
                                 <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
                                     <div class="custom-progress-container">
-                                        <div class="progress-label"><span>체적</span><span>{vol_w:.1f}%</span></div>
+                                        <div class="progress-label"><span>체적</span><span style="font-weight:bold;">{vol_w:.1f}%</span></div>
                                         <div class="progress-bg"><div class="progress-fill" style="width: {vol_w}%; background-color: #FF4B4B;"></div></div>
                                     </div>
                                     <div class="custom-progress-container">
-                                        <div class="progress-label"><span>중량</span><span>{wgt_w:.1f}%</span></div>
+                                        <div class="progress-label"><span>중량</span><span style="font-weight:bold;">{wgt_w:.1f}%</span></div>
                                         <div class="progress-bg"><div class="progress-fill" style="width: {wgt_w}%; background-color: #FF4B4B;"></div></div>
                                     </div>
                                 </div>
                             </div>
                             """, unsafe_allow_html=True)
 
-                        # 3. 무게 분포 (2x2 Grid, 33% 초과시 경고색)
                         with c3:
-                            # 33% 초과 체크용 함수
+                            # 33% 초과 시 빨간색 표시
                             def get_color(val):
-                                return "#FF4B4B" if val > 33 else "#000000"
-
+                                return "#FF0000" if val > 33 else "#000000"
+                            
                             p_fl = q_front_left/total_w*100
                             p_fr = q_front_right/total_w*100
                             p_rl = q_rear_left/total_w*100
@@ -811,17 +815,17 @@ if uploaded_file:
                             <div class="dashboard-card">
                                 <span class="card-title">⚖️ 무게 분포</span>
                                 <div class="quadrant-box">
-                                    <div class="q-cell">FL<br><span style="color:{get_color(p_fl)};">{p_fl:.0f}%</span></div>
-                                    <div class="q-cell">FR<br><span style="color:{get_color(p_fr)};">{p_fr:.0f}%</span></div>
-                                    <div class="q-cell">RL<br><span style="color:{get_color(p_rl)};">{p_rl:.0f}%</span></div>
-                                    <div class="q-cell">RR<br><span style="color:{get_color(p_rr)};">{p_rr:.0f}%</span></div>
+                                    <div class="q-cell">앞-좌<br><span style="font-weight:bold; color:{get_color(p_fl)};">{p_fl:.0f}%</span></div>
+                                    <div class="q-cell">앞-우<br><span style="font-weight:bold; color:{get_color(p_fr)};">{p_fr:.0f}%</span></div>
+                                    <div class="q-cell">뒤-좌<br><span style="font-weight:bold; color:{get_color(p_rl)};">{p_rl:.0f}%</span></div>
+                                    <div class="q-cell">뒤-우<br><span style="font-weight:bold; color:{get_color(p_rr)};">{p_rr:.0f}%</span></div>
                                 </div>
                             </div>
                             """, unsafe_allow_html=True)
 
                         st.write("") 
 
-                        # [UI Row 2] 리스트 & 차트
+                        # [UI Row 2]
                         c_list, c_chart = st.columns([1, 2]) 
                         
                         with c_list:
