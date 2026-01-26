@@ -396,9 +396,9 @@ def run_optimization(all_items, limit_h, gap_mm, max_layer_val, mode):
     return final_output
 
 # ==========================================
-# 4. 시각화 (애니메이션 + 디테일 복구)
+# 4. 시각화 (3D 애니메이션 적용 버전)
 # ==========================================
-def draw_truck_3d_animated(truck):
+def draw_truck_3d(truck, limit_count=None):
     fig = go.Figure()
     original_name = truck.name.split(' (#')[0] if '(#' in truck.name else truck.name
     spec = TRUCK_DB.get(original_name, TRUCK_DB["5톤"])
@@ -409,8 +409,11 @@ def draw_truck_3d_animated(truck):
     COLOR_FRAME = '#555555' 
     COLOR_FRAME_LINE = '#333333'
 
-    def draw_cube_trace(x, y, z, w, l, h, face_color, line_color=None, opacity=1.0, hovertext=None):
+    # [Helper] 큐브 Trace 생성 함수 (직접 fig에 추가하지 않고 Trace 객체 반환)
+    def create_cube_trace(x, y, z, w, l, h, face_color, line_color=None, opacity=1.0, hovertext=None, name=None):
         hover_info = 'text' if hovertext else 'skip'
+        
+        # 면(Mesh3d)
         mesh = go.Mesh3d(
             x=[x, x+w, x+w, x, x, x+w, x+w, x],
             y=[y, y, y+l, y+l, y, y, y+l, y+l],
@@ -419,103 +422,191 @@ def draw_truck_3d_animated(truck):
             j=[3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3],
             k=[0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6],
             color=face_color, opacity=opacity, flatshading=True, 
-            lighting=light_eff, hoverinfo=hover_info, hovertext=hovertext
+            lighting=light_eff, hoverinfo=hover_info, hovertext=hovertext,
+            name=name if name else ""
         )
+        
         traces = [mesh]
+        
+        # 테두리(Lines) - 선택 사항
         if line_color:
             xe=[x,x+w,x+w,x,x,None, x,x+w,x+w,x,x,None, x,x,None, x+w,x+w,None, x+w,x+w,None, x,x]
             ye=[y,y,y+l,y+l,y,None, y,y,y+l,y+l,y,None, y,y,None, y+l,y+l,None, y+l,y+l]
             ze=[z,z,z,z,z,None, z+h,z+h,z+h,z+h,z+h,None, z,z+h,None, z,z+h,None, z,z+h,None, z,z+h]
-            traces.append(go.Scatter3d(x=xe, y=ye, z=ze, mode='lines', line=dict(color=line_color, width=3), showlegend=False, hoverinfo='skip'))
+            lines = go.Scatter3d(
+                x=xe, y=ye, z=ze, mode='lines', 
+                line=dict(color=line_color, width=3), 
+                showlegend=False, hoverinfo='skip'
+            )
+            traces.append(lines)
+            
         return traces
 
-    # 정적 요소
+    # 1. 고정된 트럭 프레임 및 배경 그리기
     static_traces = []
     
-    # 프레임 & 후미등
+    # 프레임 치수 설정
     ch_h = 100; f_tk = 40; bmp_h = 140; 
-    static_traces.extend(draw_cube_trace(0, 0, -ch_h, W, L, ch_h, '#AAAAAA', COLOR_FRAME))
-    static_traces.extend(draw_cube_trace(-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE))
-    static_traces.extend(draw_cube_trace(W-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE))
-    static_traces.extend(draw_cube_trace(-f_tk/2, L-f_tk, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, COLOR_FRAME_LINE))
-    static_traces.extend(draw_cube_trace(-f_tk/2, L, -ch_h-bmp_h, W+f_tk, f_tk, bmp_h, '#222222'))
     
+    # 섀시 및 기둥 (Static Traces에 추가)
+    static_traces.extend(create_cube_trace(0, 0, -ch_h, W, L, ch_h, '#AAAAAA', COLOR_FRAME))
+    static_traces.extend(create_cube_trace(-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE)) 
+    static_traces.extend(create_cube_trace(W-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE))
+    static_traces.extend(create_cube_trace(-f_tk/2, L-f_tk, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, COLOR_FRAME_LINE))
+    static_traces.extend(create_cube_trace(-f_tk/2, L, -ch_h-bmp_h, W+f_tk, f_tk, bmp_h, '#222222')) 
+    
+    # 후미등 (장식)
     light_y = L + f_tk; light_z = -ch_h-bmp_h+40 
     light_w = 60; light_h = 20; light_d = 60; margin_in = 150
     left_start = -f_tk/2 + margin_in
-    static_traces.extend(draw_cube_trace(left_start, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000')) 
-    static_traces.extend(draw_cube_trace(left_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600')) 
-    static_traces.extend(draw_cube_trace(left_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA')) 
+    static_traces.extend(create_cube_trace(left_start, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000')) 
+    static_traces.extend(create_cube_trace(left_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600')) 
+    static_traces.extend(create_cube_trace(left_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA')) 
     right_start = (W + f_tk/2) - margin_in - (light_w * 3)
-    static_traces.extend(draw_cube_trace(right_start, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA')) 
-    static_traces.extend(draw_cube_trace(right_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600')) 
-    static_traces.extend(draw_cube_trace(right_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000')) 
+    static_traces.extend(create_cube_trace(right_start, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA')) 
+    static_traces.extend(create_cube_trace(right_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600')) 
+    static_traces.extend(create_cube_trace(right_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000')) 
 
-    static_traces.extend(draw_cube_trace(-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE))
-    static_traces.extend(draw_cube_trace(W-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE))
-    static_traces.extend(draw_cube_trace(-f_tk/2, 0, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, COLOR_FRAME_LINE))
-    static_traces.extend(draw_cube_trace(-f_tk/2, 0, Real_H, f_tk, L, f_tk, COLOR_FRAME, COLOR_FRAME_LINE))
-    static_traces.extend(draw_cube_trace(W-f_tk/2, 0, Real_H, f_tk, L, f_tk, COLOR_FRAME, COLOR_FRAME_LINE))
-    static_traces.extend(draw_cube_trace(0, 0, 0, W, L, Real_H, '#EEF5FF', '#666666', opacity=0.1))
+    # 전면 프레임 및 바닥
+    static_traces.extend(create_cube_trace(-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE)) 
+    static_traces.extend(create_cube_trace(W-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE)) 
+    static_traces.extend(create_cube_trace(-f_tk/2, 0, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, COLOR_FRAME_LINE)) 
+    static_traces.extend(create_cube_trace(-f_tk/2, 0, Real_H, f_tk, L, f_tk, COLOR_FRAME, COLOR_FRAME_LINE)) 
+    static_traces.extend(create_cube_trace(W-f_tk/2, 0, Real_H, f_tk, L, f_tk, COLOR_FRAME, COLOR_FRAME_LINE)) 
+    static_traces.extend(create_cube_trace(0, 0, 0, W, L, Real_H, '#EEF5FF', '#666666', opacity=0.1))
 
+    # 치수선 (Helper function 내재화 대신 직접 trace 생성 후 추가)
     OFFSET = 800; TEXT_OFFSET = OFFSET * 1.5
-    def get_arrow_dim_traces(p1, p2, text, color='black'):
-        traces = []
-        traces.append(go.Scatter3d(x=[p1[0], p2[0]], y=[p1[1], p2[1]], z=[p1[2], p2[2]], mode='lines', line=dict(color=color, width=3), showlegend=False, hoverinfo='skip'))
+    def make_dim_traces(p1, p2, text, color='black'):
+        t_list = []
+        t_list.append(go.Scatter3d(x=[p1[0], p2[0]], y=[p1[1], p2[1]], z=[p1[2], p2[2]], mode='lines', line=dict(color=color, width=3), showlegend=False, hoverinfo='skip'))
         vec = np.array(p2) - np.array(p1); length = np.linalg.norm(vec)
         if length > 0:
             u, v, w = vec / length
-            traces.append(go.Cone(x=[p2[0]], y=[p2[1]], z=[p2[2]], u=[u], v=[v], w=[w], sizemode="absolute", sizeref=150, anchor="tip", showscale=False, colorscale=[[0, color], [1, color]], hoverinfo='skip'))
-            traces.append(go.Cone(x=[p1[0]], y=[p1[1]], z=[p1[2]], u=[-u], v=[-v], w=[-w], sizemode="absolute", sizeref=150, anchor="tip", showscale=False, colorscale=[[0, color], [1, color]], hoverinfo='skip'))
+            t_list.append(go.Cone(x=[p2[0]], y=[p2[1]], z=[p2[2]], u=[u], v=[v], w=[w], sizemode="absolute", sizeref=150, anchor="tip", showscale=False, colorscale=[[0, color], [1, color]], hoverinfo='skip'))
+            t_list.append(go.Cone(x=[p1[0]], y=[p1[1]], z=[p1[2]], u=[-u], v=[-v], w=[-w], sizemode="absolute", sizeref=150, anchor="tip", showscale=False, colorscale=[[0, color], [1, color]], hoverinfo='skip'))
         mid = [(p1[0]+p2[0])/2, (p1[1]+p2[1])/2, (p1[2]+p2[2])/2]
         if text.startswith("폭"): mid[1] = -TEXT_OFFSET; mid[2] = 0
         elif text.startswith("길이"): mid[0] = -TEXT_OFFSET; mid[2] = 0
-        traces.append(go.Scatter3d(x=[mid[0]], y=[mid[1]], z=[mid[2]], mode='text', text=[text], textfont=dict(color=color, size=12, family="Arial"), showlegend=False, hoverinfo='skip'))
-        return traces
+        t_list.append(go.Scatter3d(x=[mid[0]], y=[mid[1]], z=[mid[2]], mode='text', text=[text], textfont=dict(color=color, size=12, family="Arial"), showlegend=False, hoverinfo='skip'))
+        return t_list
 
-    static_traces.extend(get_arrow_dim_traces([0, -OFFSET, 0], [W, -OFFSET, 0], f"폭 : {int(W)}"))
-    static_traces.extend(get_arrow_dim_traces([-OFFSET, 0, 0], [-OFFSET, L, 0], f"길이 : {int(L)}"))
-    static_traces.extend(get_arrow_dim_traces([-OFFSET, L, 0], [-OFFSET, L, LIMIT_H], f"높이제한 : {int(LIMIT_H)}", color='red'))
+    static_traces.extend(make_dim_traces([0, -OFFSET, 0], [W, -OFFSET, 0], f"폭 : {int(W)}"))
+    static_traces.extend(make_dim_traces([-OFFSET, 0, 0], [-OFFSET, L, 0], f"길이 : {int(L)}"))
+    static_traces.extend(make_dim_traces([-OFFSET, L, 0], [-OFFSET, L, LIMIT_H], f"높이제한 : {int(LIMIT_H)}", color='red'))
     static_traces.append(go.Scatter3d(x=[0, W, W, 0, 0], y=[0, 0, L, L, 0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False, hoverinfo='skip'))
 
-    for trace in static_traces:
-        fig.add_trace(trace)
-
-    # 박스 트레이스
-    box_traces_groups = []
+    # 2. 박스 데이터 생성 (Box Traces)
+    # 애니메이션을 위해 박스별로 Trace를 생성하고 리스트에 담습니다.
+    # Mesh3d와 테두리 Line을 하나의 그룹으로 묶지 않고 평탄화(flatten)해서 관리해야 visibility 제어가 쉽습니다.
+    
+    box_traces = []
+    box_trace_indices = [] # 각 박스가 몇 개의 trace(면+선)로 구성되는지 저장
+    
     for item in truck.items:
         col = '#FF6B6B' if item.is_heavy else '#FAD7A0'
         hover_text = f"<b>📦 {item.name}</b><br>규격: {int(item.w)}x{int(item.d)}x{int(item.h)}<br>중량: {int(item.weight):,}kg<br>적재단수: {item.level}단"
-        box_traces_groups.append(draw_cube_trace(item.x, item.y, item.z, item.w, item.d, item.h, col, '#000000', hovertext=hover_text))
+        
+        # 박스 1개당 생성되는 Trace들 (Mesh 1개 + Line 1개 = 총 2개)
+        traces = create_cube_trace(item.x, item.y, item.z, item.w, item.d, item.h, col, '#000000', hovertext=hover_text, name=item.name)
+        
+        start_idx = len(box_traces)
+        box_traces.extend(traces)
+        end_idx = len(box_traces)
+        box_trace_indices.append(range(start_idx, end_idx))
 
-    num_static = len(fig.data)
-    for group in box_traces_groups:
-        for trace in group:
-            trace.visible = False
-            fig.add_trace(trace)
+    # 3. Figure 초기화 및 Trace 추가
+    # 초기 상태: 모든 박스가 다 보이는 상태 (Return to original screen at end)
+    for t in static_traces:
+        fig.add_trace(t)
+    for t in box_traces:
+        fig.add_trace(t)
 
+    # Static trace 개수
+    num_static = len(static_traces)
+    num_boxes = len(truck.items)
+    total_traces = len(fig.data)
+
+    # 4. 애니메이션 프레임 생성
+    # Frame 0: 빈 트럭
+    # Frame k: k번째 박스까지 적재
     frames = []
-    steps = len(truck.items)
-    for i in range(steps + 1):
-        frame_data = []
-        for _ in range(num_static): frame_data.append({})
-        box_idx = 0
-        for group in box_traces_groups:
-            is_visible = box_idx < i
-            for _ in group: frame_data.append({'visible': is_visible})
-            box_idx += 1
-        frames.append(go.Frame(name=f"frame_{i}", data=frame_data))
+    
+    # 4-1. 빈 트럭 프레임 (Start)
+    frames.append(go.Frame(
+        data=[dict(visible=True) for _ in range(num_static)] + [dict(visible=False) for _ in range(len(box_traces))],
+        name="start"
+    ))
+
+    # 4-2. 단계별 적재 프레임
+    # 누적적으로 visible을 True로 켭니다.
+    current_visible_count = 0
+    for i in range(num_boxes):
+        # 이번 단계에서 켜야 할 box trace들의 개수
+        box_indices = box_trace_indices[i]
+        
+        # 전체 trace visibility 리스트 생성
+        # Static(Always True) + Previous Boxes(True) + Current Box(True) + Future Boxes(False)
+        
+        # Plotly Frame 최적화를 위해 전체 리스트를 다시 보내는 대신,
+        # 프레임별로 가시성(visible) 속성만 업데이트합니다.
+        # 하지만 Python Plotly에서는 data 리스트의 길이가 trace 길이와 같아야 매칭이 잘 됩니다.
+        
+        visibility_list = [True] * num_static # 트럭 프레임은 항상 보임
+        
+        # 박스들 가시성 설정
+        box_vis_list = []
+        for b_idx in range(len(box_traces)):
+            # 현재 박스 그룹(i)까지 포함되면 True
+            if b_idx < box_trace_indices[i].stop:
+                box_vis_list.append(True)
+            else:
+                box_vis_list.append(False)
+        
+        visibility_list.extend(box_vis_list)
+        
+        # Frame 추가
+        frames.append(go.Frame(
+            data=[dict(visible=vis) for vis in visibility_list],
+            name=f"step_{i}"
+        ))
 
     fig.frames = frames
-    fig.update_layout(
-        updatemenus=[dict(type="buttons", showactive=False, y=0, x=0, xanchor="left", yanchor="bottom", pad=dict(t=45, r=10), buttons=[dict(label="▶️ 적재 과정 재생", method="animate", args=[None, dict(frame=dict(duration=500, redraw=True), fromcurrent=True, mode='immediate')])])],
-        sliders=[dict(steps=[dict(method='animate', args=[[f'frame_{k}'], dict(mode='immediate', frame=dict(duration=0, redraw=True), transition=dict(duration=0))], label=f"{k}") for k in range(steps + 1)], currentvalue=dict(prefix="적재 순서: ", visible=True, xanchor="right"), len=0.9)],
-        scene=dict(aspectmode='data', xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False), bgcolor='white', camera=dict(eye=dict(x=-1.8, y=-1.8, z=1.2), up=dict(x=0, y=0, z=1))),
-        margin=dict(l=0, r=0, b=0, t=0), height=600
-    )
-    for i in range(num_static, len(fig.data)): fig.data[i].visible = True
-    return fig
 
+    # 5. 레이아웃 및 애니메이션 컨트롤 설정
+    fig.update_layout(
+        scene=dict(
+            aspectmode='data', 
+            xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False), 
+            bgcolor='white', 
+            camera=dict(eye=dict(x=-1.8, y=-1.8, z=1.2), up=dict(x=0, y=0, z=1))
+        ),
+        margin=dict(l=0, r=0, b=0, t=0),
+        height=600,
+        uirevision=str(uuid.uuid4()), # 카메라 고정
+        updatemenus=[dict(
+            type="buttons",
+            showactive=False,
+            x=0.1, y=0.1, xanchor="right", yanchor="top",
+            buttons=[dict(
+                label="▶ 적재 재생",
+                method="animate",
+                args=[None, dict(frame=dict(duration=500, redraw=True), fromcurrent=True, mode="immediate")]
+            )]
+        )],
+        sliders=[dict(
+            steps=[dict(
+                method="animate",
+                args=[[f"step_{k}"], dict(mode="immediate", frame=dict(duration=0, redraw=True))],
+                label=f"{k+1}/{num_boxes}"
+            ) for k in range(num_boxes)],
+            active=num_boxes - 1, # 슬라이더 시작 위치 (맨 끝)
+            currentvalue=dict(prefix="적재 순서: ", visible=True, xanchor="center"),
+            pad=dict(t=50)
+        )]
+    )
+
+    return fig
 # ==========================================
 # 5. 메인 UI
 # ==========================================
