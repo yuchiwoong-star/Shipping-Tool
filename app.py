@@ -47,6 +47,7 @@ class Truck:
         self.cost = int(cost)
         self.items = []
         self.total_weight = 0.0
+        # 피벗: (x, y, z)
         self.pivots = [[0.0, 0.0, 0.0]]
         self.gap_mm = gap_mm
         self.limit_level_on = limit_level_on
@@ -118,7 +119,6 @@ class Truck:
 # ==========================================
 st.set_page_config(layout="wide", page_title="출하박스 적재 최적화 시스템")
 
-# [스타일 커스텀]
 st.markdown("""
 <style>
     .stTabs [data-baseweb="tab-list"] { gap: 8px; }
@@ -144,47 +144,91 @@ st.markdown("""
         margin: 0;
     }
 
-    /* 정보 카드 (통일된 디자인) */
-    .info-card {
-        background-color: #f8f9fa;
-        border: 1px solid #ddd;
-        border-radius: 5px;
-        padding: 10px;
-        text-align: center;
-        height: 100%;
+    /* 통합 대시보드 카드 스타일 */
+    .dashboard-card {
+        background-color: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 15px;
+        height: 200px; /* 높이 통일 */
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
-    .info-title {
-        font-size: 14px;
-        font-weight: bold;
-        color: #555;
-        margin-bottom: 5px;
-        display: block;
-    }
-    .info-value {
+    .card-title {
         font-size: 16px;
-        font-weight: bold;
-        color: #000;
-        display: block;
+        font-weight: 700;
+        color: #333;
+        margin-bottom: 15px;
+        border-bottom: 2px solid #f0f0f0;
+        padding-bottom: 5px;
     }
     
-    /* 4분면 그리드 */
-    .quadrant-grid {
+    /* 요약 정보 텍스트 */
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        font-size: 14px;
+        color: #555;
+    }
+    .summary-val {
+        font-weight: bold;
+        color: #000;
+    }
+
+    /* 커스텀 프로그레스 바 */
+    .custom-progress-container {
+        margin-bottom: 12px;
+    }
+    .progress-label {
+        font-size: 13px;
+        color: #666;
+        margin-bottom: 3px;
+        display: flex;
+        justify-content: space-between;
+    }
+    .progress-bg {
+        background-color: #eee;
+        border-radius: 10px;
+        height: 12px;
+        width: 100%;
+        overflow: hidden;
+    }
+    .progress-fill {
+        background-color: #ff4b4b;
+        height: 100%;
+        border-radius: 10px;
+    }
+
+    /* 4분면 그리드 (2x2) */
+    .quadrant-box {
         display: grid;
         grid-template-columns: 1fr 1fr;
         grid-template-rows: 1fr 1fr;
-        gap: 2px;
-        text-align: center;
-        font-size: 12px;
-        font-weight: bold;
-        background-color: #eee;
-        padding: 2px;
+        width: 100%;
+        height: 120px;
+        border: 1px solid #ddd;
         border-radius: 5px;
+        background-color: #fafafa;
     }
     .q-cell {
-        padding: 5px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        font-size: 13px;
+        font-weight: bold;
+        color: #444;
         background-color: white;
-        border-radius: 3px;
     }
+    /* 십자선 테두리 만들기 */
+    .q-cell:nth-child(1) { border-right: 1px solid #ddd; border-bottom: 1px solid #ddd; border-top-left-radius: 5px;}
+    .q-cell:nth-child(2) { border-bottom: 1px solid #ddd; border-top-right-radius: 5px;}
+    .q-cell:nth-child(3) { border-right: 1px solid #ddd; border-bottom-left-radius: 5px;}
+    .q-cell:nth-child(4) { border-bottom-right-radius: 5px;}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -255,6 +299,7 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on, mode):
         if not truck.items: return
         items_by_row = []
         sorted_items = sorted(truck.items, key=lambda x: x.y)
+        
         current_row = []
         if sorted_items:
             current_row_y = sorted_items[0].y
@@ -266,13 +311,17 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on, mode):
                 else:
                     current_row.append(item)
             items_by_row.append(current_row)
+        
         if len(items_by_row) < 2: return 
+
         row_heights = []
         for row in items_by_row:
             max_h = max(item.h for item in row)
             row_heights.append({'max_h': max_h, 'items': row, 'original_y': row[0].y})
+        
         row_heights.sort(key=lambda x: x['max_h'], reverse=True)
         target_y_positions = sorted([r['original_y'] for r in row_heights])
+        
         new_items = []
         for i, row_data in enumerate(row_heights):
             y_diff = target_y_positions[i] - row_data['original_y']
@@ -297,6 +346,7 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on, mode):
                 else:
                     current_row.append(item)
             items_by_row.append(current_row)
+            
         final_items = []
         for row in items_by_row:
             mounded_row = mound_sort_by_height(row)
@@ -335,6 +385,7 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on, mode):
         for start_truck_name in TRUCK_DB:
             spec = TRUCK_DB[start_truck_name]
             if total_w > 15000 and spec['weight'] < 4000: continue
+
             t1 = Truck(start_truck_name, spec['w'], limit_h, spec['l'] - MARGIN_LENGTH, spec['weight'], spec['cost'], gap_mm, limit_level_on)
             packed_in_t1 = []
             for item in sorted_items:
@@ -342,10 +393,13 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on, mode):
                 nb.is_heavy = item.is_heavy
                 if t1.put_item(nb):
                     packed_in_t1.append(item)
+            
             if not t1.items: continue
+            
             packed_names = set(i.name for i in packed_in_t1)
             rem_items = [i for i in sorted_items if i.name not in packed_names]
             current_solution = [t1]
+            
             if rem_items:
                 rem_copy = rem_items[:]
                 while rem_copy:
@@ -373,12 +427,14 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on, mode):
                         p_names = set(i.name for i in best_next.items)
                         rem_copy = [i for i in rem_copy if i.name not in p_names]
                     else: break
+            
             total_packed = sum(len(t.items) for t in current_solution)
             if total_packed < len(items_input): continue
             cost = sum(t.cost for t in current_solution)
             if cost < min_start_cost:
                 min_start_cost = cost
                 best_start_solution = current_solution
+                
         return best_start_solution
 
     final_solution_trucks = []
@@ -495,6 +551,7 @@ def draw_truck_3d(truck, limit_count=None):
 
     draw_arrow_dim([0, -OFFSET, 0], [W, -OFFSET, 0], f"폭 : {int(W)}")
     draw_arrow_dim([-OFFSET, 0, 0], [-OFFSET, L, 0], f"길이 : {int(L)}")
+    
     draw_arrow_dim([-OFFSET, L, 0], [-OFFSET, L, LIMIT_H], f"높이제한 : {int(LIMIT_H)}", color='red')
     fig.add_trace(go.Scatter3d(x=[0, W, W, 0, 0], y=[0, 0, L, L, 0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False, hoverinfo='skip'))
 
@@ -577,7 +634,6 @@ if uploaded_file:
                 st.write("1. 데이터를 읽고 변환하고 있습니다...")
                 time.sleep(0.1) 
                 
-                # 분석 History 기능 추가 (Expander)
                 with st.expander("📜 분석 History", expanded=False):
                     st.write("- 데이터 로드 및 전처리 완료")
                     st.write(f"- 선택 모드: {opt_mode}")
@@ -602,7 +658,6 @@ if uploaded_file:
             trucks = st.session_state['optimized_result']
             display_height = st.session_state.get('calc_opt_height', 1300)
 
-            # [UI] 완료 하이라이트 박스 (초록색)
             st.markdown("""
                 <div class="highlight-box">
                     <p class="highlight-text">✅ 배차 분석 완료! 아래 결과를 확인하세요.</p>
@@ -625,7 +680,7 @@ if uploaded_file:
                     with tab:
                         t = trucks[i]
                         
-                        # [UI Row 1] 상단 가로형 정보 바 (통일된 카드 형태)
+                        # 계산 로직
                         truck_limit_vol = t.w * t.d * display_height 
                         used_vol = sum([b.vol for b in t.items])
                         vol_pct = min(1.0, used_vol / truck_limit_vol) if truck_limit_vol > 0 else 0
@@ -650,44 +705,62 @@ if uploaded_file:
                             q_rear_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d) / box_area)
                         total_w = t.total_weight if t.total_weight > 0 else 1
 
-                        # [상단 정보 그리드]
+                        # [상단 정보 그리드: 카드형]
                         c1, c2, c3 = st.columns([1, 1, 1.2])
                         
                         # 1. 요약 정보
                         with c1:
                             st.markdown(f"""
-                            <div class="info-card">
-                                <span class="info-title">📦 적재 정보</span>
-                                <span class="info-value">박스 {len(t.items)}개 / {t.total_weight:,.0f}kg</span><br>
-                                <span class="info-value" style="color:#e53e3e;">비용: {t.cost:,}원</span>
+                            <div class="dashboard-card">
+                                <span class="card-title">📋 적재 정보</span>
+                                <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
+                                    <div class="summary-row"><span>박스 수량</span><span class="summary-val">{len(t.items)} 개</span></div>
+                                    <div class="summary-row"><span>적재 중량</span><span class="summary-val">{t.total_weight:,.0f} kg</span></div>
+                                    <div class="summary-row"><span>운송 비용</span><span class="summary-val" style="color:#e53e3e;">{t.cost:,} 원</span></div>
+                                </div>
                             </div>
                             """, unsafe_allow_html=True)
                         
-                        # 2. 적재율 (Progress Bar 형태 유지하되 카드 안에 넣음)
+                        # 2. 적재율 (HTML Progress Bar)
                         with c2:
-                            st.markdown("""<div class="info-card"><span class="info-title">📉 적재율</span>""", unsafe_allow_html=True)
-                            st.progress(vol_pct, text=f"체적: {vol_pct*100:.1f}%")
-                            st.progress(weight_pct, text=f"중량: {weight_pct*100:.1f}%")
-                            st.markdown("</div>", unsafe_allow_html=True)
-
-                        # 3. 무게 분포 (2x2 그리드)
-                        with c3:
+                            vol_w = vol_pct * 100
+                            wgt_w = weight_pct * 100
                             st.markdown(f"""
-                            <div class="quadrant-grid">
-                                <div class="q-cell">FL (앞-좌)<br>{q_front_left/total_w*100:.0f}%</div>
-                                <div class="q-cell">FR (앞-우)<br>{q_front_right/total_w*100:.0f}%</div>
-                                <div class="q-cell">RL (뒤-좌)<br>{q_rear_left/total_w*100:.0f}%</div>
-                                <div class="q-cell">RR (뒤-우)<br>{q_rear_right/total_w*100:.0f}%</div>
+                            <div class="dashboard-card">
+                                <span class="card-title">📉 적재율</span>
+                                <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
+                                    <div class="custom-progress-container">
+                                        <div class="progress-label"><span>체적</span><span>{vol_w:.1f}%</span></div>
+                                        <div class="progress-bg"><div class="progress-fill" style="width: {vol_w}%; background-color: #3b82f6;"></div></div>
+                                    </div>
+                                    <div class="custom-progress-container">
+                                        <div class="progress-label"><span>중량</span><span>{wgt_w:.1f}%</span></div>
+                                        <div class="progress-bg"><div class="progress-fill" style="width: {wgt_w}%; background-color: #ef4444;"></div></div>
+                                    </div>
+                                </div>
                             </div>
                             """, unsafe_allow_html=True)
 
-                        st.write("") # 간격
+                        # 3. 무게 분포 (2x2 Grid)
+                        with c3:
+                            st.markdown(f"""
+                            <div class="dashboard-card">
+                                <span class="card-title">⚖️ 무게 분포</span>
+                                <div class="quadrant-box">
+                                    <div class="q-cell">앞-좌<br><span style="color:#3b82f6;">{q_front_left/total_w*100:.0f}%</span></div>
+                                    <div class="q-cell">앞-우<br><span style="color:#3b82f6;">{q_front_right/total_w*100:.0f}%</span></div>
+                                    <div class="q-cell">뒤-좌<br><span style="color:#3b82f6;">{q_rear_left/total_w*100:.0f}%</span></div>
+                                    <div class="q-cell">뒤-우<br><span style="color:#3b82f6;">{q_rear_right/total_w*100:.0f}%</span></div>
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                        st.write("") 
 
                         # [UI Row 2] 리스트 & 차트
                         c_list, c_chart = st.columns([1, 2]) 
                         
                         with c_list:
-                            # PDF 버튼을 리스트 위에 배치
                             if HAS_REPORTLAB:
                                 buffer = BytesIO()
                                 c = canvas.Canvas(buffer, pagesize=A4)
