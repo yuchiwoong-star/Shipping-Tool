@@ -695,7 +695,6 @@ if uploaded_file:
                 st.markdown(f"**1️⃣ 데이터 및 옵션 확인**")
                 st.text(f"   - 입력 데이터: {len(df)}건 로드 완료")
                 st.text(f"   - 선택 모드: {opt_mode}")
-                # [수정] 박스 간 간격 정보 추가
                 st.text(f"   - 제약 조건: 높이 {opt_height}mm / 간격 {gap_mm}mm / {opt_stack_limit}")
 
                 st.markdown(f"**2️⃣ 1차 배차 시뮬레이션 (Allocation)**")
@@ -848,7 +847,7 @@ if uploaded_file:
                                 c.drawString(30, height - 90, f"Box Count: {len(t.items)} ea")
                                 y = height - 130
                                 c.setFont("Helvetica-Bold", 10)
-                                c.drawString(30, y, "No.  Box Name       Size(WxDxH)        Weight")
+                                c.drawString(30, y, "No.  Box Name        Size(WxDxH)         Weight")
                                 c.line(30, y-5, 550, y-5)
                                 y -= 20
                                 c.setFont("Helvetica", 10)
@@ -856,14 +855,44 @@ if uploaded_file:
                                     if y < 50: 
                                         c.showPage()
                                         y = height - 50
-                                    c.drawString(30, y, f"{idx+1}.  {item.name}   {int(item.w)}x{int(item.d)}x{int(item.h)}   {int(item.weight)}kg")
+                                    c.drawString(30, y, f"{idx+1}.  {item.name}    {int(item.w)}x{int(item.d)}x{int(item.h)}    {int(item.weight)}kg")
                                     y -= 15
                                 c.save()
                                 buffer.seek(0)
                                 st.download_button("📄 PDF 다운로드", buffer, f"{t.name}.pdf", "application/pdf", key=f"pdf_{i}")
                             
                             with st.expander("📦 상세 적재 리스트 (펼치기)", expanded=False):
-                                detail_df = pd.DataFrame([{"No": i+1, "박스명": b.name, "크기": f"{int(b.w)}x{int(b.d)}x{int(b.h)}", "무게": int(b.weight)} for i, b in enumerate(t.items)])
+                                # ==========================================
+                                # [수정] 상세 리스트에 단수/위치 컬럼 추가
+                                # ==========================================
+                                row_data_list = []
+                                truck_l = t.d # 트럭 길이
+                                truck_w = t.w # 트럭 폭
+                                
+                                for idx, b in enumerate(t.items):
+                                    # 박스 중심점 계산
+                                    center_x = b.x + (b.w / 2)
+                                    center_y = b.y + (b.d / 2)
+                                    
+                                    # 위치 판단 (앞/뒤, 좌/우)
+                                    # Y축: 0~L/2(앞/안쪽), L/2~L(뒤/문쪽)
+                                    pos_y = "앞" if center_y < (truck_l / 2) else "뒤"
+                                    # X축: 0~W/2(좌), W/2~W(우)
+                                    pos_x = "좌" if center_x < (truck_w / 2) else "우"
+                                    
+                                    location_str = f"{pos_y}-{pos_x}"
+                                    level_str = f"{b.level}단"
+
+                                    row_data_list.append({
+                                        "No": idx+1, 
+                                        "박스명": b.name, 
+                                        "크기": f"{int(b.w)}x{int(b.d)}x{int(b.h)}", 
+                                        "무게": int(b.weight),
+                                        "적재단수": level_str,
+                                        "위치": location_str
+                                    })
+
+                                detail_df = pd.DataFrame(row_data_list)
                                 st.dataframe(detail_df, hide_index=True, use_container_width=True, height=400)
 
                         with c_chart:
