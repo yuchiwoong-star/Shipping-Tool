@@ -863,29 +863,27 @@ if uploaded_file:
                             
                             with st.expander("📦 상세 적재 리스트 (펼치기)", expanded=False):
                                 # ==========================================
-                                # [수정] 상세 리스트에 단수/위치 컬럼 추가
+                                # [수정] 박스명->박스번호, 정렬, 가운데정렬, 적재순서
                                 # ==========================================
-                                row_data_list = []
-                                truck_l = t.d # 트럭 길이
-                                truck_w = t.w # 트럭 폭
                                 
-                                for idx, b in enumerate(t.items):
-                                    # 박스 중심점 계산
+                                # 1. 적재 순서 문자열 생성 (적재된 순서대로 이름 추출)
+                                loading_order_names = [b.name for b in t.items]
+                                loading_str = " -> ".join(loading_order_names)
+
+                                row_data_list = []
+                                truck_l = t.d
+                                truck_w = t.w
+                                
+                                for b in t.items:
                                     center_x = b.x + (b.w / 2)
                                     center_y = b.y + (b.d / 2)
-                                    
-                                    # 위치 판단 (앞/뒤, 좌/우)
-                                    # Y축: 0~L/2(앞/안쪽), L/2~L(뒤/문쪽)
                                     pos_y = "앞" if center_y < (truck_l / 2) else "뒤"
-                                    # X축: 0~W/2(좌), W/2~W(우)
                                     pos_x = "좌" if center_x < (truck_w / 2) else "우"
-                                    
                                     location_str = f"{pos_y}-{pos_x}"
                                     level_str = f"{b.level}단"
 
                                     row_data_list.append({
-                                        "No": idx+1, 
-                                        "박스명": b.name, 
+                                        "박스번호": b.name,  # [수정] 박스번호로 변경, No 제거
                                         "크기": f"{int(b.w)}x{int(b.d)}x{int(b.h)}", 
                                         "무게": int(b.weight),
                                         "적재단수": level_str,
@@ -893,7 +891,24 @@ if uploaded_file:
                                     })
 
                                 detail_df = pd.DataFrame(row_data_list)
-                                st.dataframe(detail_df, hide_index=True, use_container_width=True, height=400)
+
+                                # [수정] 박스번호 기준 정렬 (숫자 우선 처리)
+                                # 숫자로 변환 가능한 것은 숫자로, 아니면 무한대로 보내서 문자열로 정렬
+                                detail_df['sort_key'] = pd.to_numeric(detail_df['박스번호'], errors='coerce').fillna(float('inf'))
+                                
+                                # sort_key(숫자) 기준 정렬 -> 같거나 inf면 박스번호(문자) 기준 정렬
+                                detail_df = detail_df.sort_values(by=['sort_key', '박스번호'])
+                                detail_df = detail_df.drop(columns=['sort_key'])
+
+                                # [수정] 가운데 정렬 스타일 적용
+                                styled_df = detail_df.style.set_properties(**{'text-align': 'center'}).set_table_styles([
+                                    {'selector': 'th', 'props': [('text-align', 'center')]}
+                                ])
+                                
+                                st.dataframe(styled_df, hide_index=True, use_container_width=True, height=400)
+                                
+                                # [수정] 하단 적재 순서 표기
+                                st.info(f"**🚛 적재 순서:** {loading_str}")
 
                         with c_chart:
                             st.plotly_chart(draw_truck_3d(t, limit_count=None), use_container_width=True)
