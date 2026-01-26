@@ -629,8 +629,8 @@ opt_mode = st.sidebar.radio(
 )
 mode_key = 'length' if "길이" in opt_mode else 'area'
 
-# [기본값 1300mm로 변경 (index=1)]
-opt_height_str = st.sidebar.radio("적재 높이 제한", options=["1200mm", "1300mm", "1400mm"], index=1, horizontal=True, on_change=clear_result)
+# [수정] 1100mm 옵션 추가 (기본값 1300mm 유지를 위해 index=2로 설정)
+opt_height_str = st.sidebar.radio("적재 높이 제한", options=["1100mm", "1200mm", "1300mm", "1400mm"], index=2, horizontal=True, on_change=clear_result)
 opt_height = int(opt_height_str.replace("mm", ""))
 
 opt_gap_str = st.sidebar.radio("박스 간 간격 (길이방향)", options=["0mm", "100mm", "200mm", "300mm"], index=2, horizontal=True, on_change=clear_result)
@@ -777,7 +777,6 @@ if uploaded_file:
                             q_rear_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d) / box_area)
                         total_w = t.total_weight if t.total_weight > 0 else 1
 
-                        # [수정] 상단 카드 3개 가로 비율 균등하게 (1:1:1)
                         c1, c2, c3 = st.columns([1, 1, 1])
                         
                         with c1:
@@ -795,7 +794,6 @@ if uploaded_file:
                         with c2:
                             vol_w = vol_pct * 100
                             wgt_w = weight_pct * 100
-                            # [수정] 적재율 숫자 텍스트 색상을 검정(#000000)으로 변경
                             st.markdown(f"""
                             <div class="dashboard-card">
                                 <span class="card-title">📉 적재율</span>
@@ -818,23 +816,22 @@ if uploaded_file:
                             p_rl = q_rear_left/total_w*100
                             p_rr = q_rear_right/total_w*100
 
-                            # [수정] Risk 기반 경고 로직 적용
-                            c_fl = c_fr = c_rl = c_rr = "#000000" # 기본 검정
+                            c_fl = c_fr = c_rl = c_rr = "#000000" 
 
                             # 1. 좌우 밸런스 (20% 이상 차이 시 위험)
                             left_sum = p_fl + p_rl
                             right_sum = p_fr + p_rr
                             if abs(left_sum - right_sum) >= 20:
                                 if left_sum > right_sum:
-                                    c_fl = c_rl = "#FF0000" # 좌측 경고
+                                    c_fl = c_rl = "#FF0000"
                                 else:
-                                    c_fr = c_rr = "#FF0000" # 우측 경고
+                                    c_fr = c_rr = "#FF0000"
 
                             # 2. 전후 밸런스 (뒤쪽 75% 초과 or 앞쪽 20% 미만 시 뒤쪽 위험)
                             front_sum = p_fl + p_fr
                             rear_sum = p_rl + p_rr
                             if rear_sum > 75 or front_sum < 20:
-                                c_rl = c_rr = "#FF0000" # 뒤쪽 경고
+                                c_rl = c_rr = "#FF0000"
 
                             # 3. 포인트 하중 (한 분면 40% 초과)
                             if p_fl > 40: c_fl = "#FF0000"
@@ -856,7 +853,6 @@ if uploaded_file:
 
                         st.write("") 
 
-                        # [수정] 하단 리스트:차트 비율을 1:2로 유지하여 리스트가 상단 1개 카드 너비와 일치하도록 배치
                         c_list, c_chart = st.columns([1, 2]) 
                         
                         with c_list:
@@ -885,8 +881,7 @@ if uploaded_file:
                                 buffer.seek(0)
                                 st.download_button("📄 PDF 다운로드", buffer, f"{t.name}.pdf", "application/pdf", key=f"pdf_{i}")
                             
-                            with st.expander("📦 상세 적재 리스트 (펼치기)", expanded=True): # 펼치기 기본값 True로 변경 (보기 편하게)
-                                # 1. 적재 순서 문자열 생성 (적재된 순서대로 이름 추출)
+                            with st.expander("📦 상세 적재 리스트 (펼치기)", expanded=True): 
                                 loading_order_names = [b.name for b in t.items]
                                 loading_str = " -> ".join(loading_order_names)
 
@@ -912,12 +907,10 @@ if uploaded_file:
 
                                 detail_df = pd.DataFrame(row_data_list)
 
-                                # 박스번호 기준 정렬 (숫자 우선 처리)
                                 detail_df['sort_key'] = pd.to_numeric(detail_df['박스번호'], errors='coerce').fillna(float('inf'))
                                 detail_df = detail_df.sort_values(by=['sort_key', '박스번호'])
                                 detail_df = detail_df.drop(columns=['sort_key'])
 
-                                # 가운데 정렬 스타일 적용
                                 styled_df = detail_df.style.set_properties(**{'text-align': 'center'}).set_table_styles([
                                     {'selector': 'th', 'props': [('text-align', 'center')]}
                                 ])
