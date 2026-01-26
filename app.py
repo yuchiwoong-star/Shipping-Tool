@@ -128,29 +128,13 @@ st.markdown("""
     }
     .stTabs [aria-selected="true"] { background-color: #FF4B4B !important; color: white !important; }
     
-    /* 하이라이트 박스 */
-    .highlight-box {
-        background-color: #e6fffa;
-        border: 2px solid #38b2ac;
-        border-radius: 10px;
-        padding: 15px;
-        text-align: center;
-        margin-bottom: 20px;
-    }
-    .highlight-text {
-        color: #234e52;
-        font-size: 20px;
-        font-weight: bold;
-        margin: 0;
-    }
-
     /* 통합 대시보드 카드 스타일 */
     .dashboard-card {
         background-color: #ffffff;
         border: 1px solid #e0e0e0;
         border-radius: 8px;
         padding: 15px;
-        height: 200px; /* 높이 통일 */
+        height: 200px;
         display: flex;
         flex-direction: column;
         justify-content: flex-start;
@@ -223,11 +207,48 @@ st.markdown("""
         color: #444;
         background-color: white;
     }
-    /* 십자선 테두리 만들기 */
     .q-cell:nth-child(1) { border-right: 1px solid #ddd; border-bottom: 1px solid #ddd; border-top-left-radius: 5px;}
     .q-cell:nth-child(2) { border-bottom: 1px solid #ddd; border-top-right-radius: 5px;}
     .q-cell:nth-child(3) { border-right: 1px solid #ddd; border-bottom-left-radius: 5px;}
     .q-cell:nth-child(4) { border-bottom-right-radius: 5px;}
+
+    /* 결과 요약 박스 (통합형) */
+    .result-summary-box {
+        background-color: #f0fdf4; /* 연한 초록 배경 */
+        border: 2px solid #22c55e; /* 진한 초록 테두리 */
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+        text-align: center;
+    }
+    .result-title {
+        color: #15803d;
+        font-size: 22px;
+        font-weight: bold;
+        margin-bottom: 15px;
+    }
+    .result-metrics {
+        display: flex;
+        justify-content: space-around;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    .metric-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-width: 120px;
+    }
+    .metric-label {
+        font-size: 14px;
+        color: #555;
+        margin-bottom: 5px;
+    }
+    .metric-value {
+        font-size: 24px;
+        font-weight: 800;
+        color: #000;
+    }
 
 </style>
 """, unsafe_allow_html=True)
@@ -649,19 +670,12 @@ if uploaded_file:
             trucks = st.session_state['optimized_result']
             display_height = st.session_state.get('calc_opt_height', 1300)
 
-            st.markdown("""
-                <div class="highlight-box">
-                    <p class="highlight-text">✅ 배차 분석 완료! 아래 결과를 확인하세요.</p>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            # [History Expander 위치 변경] 완료 메시지 바로 아래
-            with st.expander("📜 분석 History (Click to view details)"):
+            # 1. 분석 History (맨 위로 이동)
+            with st.expander("📜 분석 History (Click to view details)", expanded=False):
                 st.write(f"- [System] 데이터 파일 로드 완료 ({len(df)}건)")
                 st.write(f"- [User] 선택 모드: {opt_mode}")
                 st.write("- [Process] 1톤 ~ 25톤 트럭 시뮬레이션 시작...")
                 st.write("- [Process] 적재 알고리즘 수행 (Greedy Strategy)")
-                st.write("- [Optimization] 1차 최적화 완료")
                 if mode_key == 'length':
                     st.write("- [Optimization] 길이 기준 그룹핑 및 피라미드 정렬 수행")
                 else:
@@ -671,14 +685,34 @@ if uploaded_file:
 
             if trucks:
                 total_cost = sum(t.cost for t in trucks)
+                total_weight = sum(t.total_weight for t in trucks)
                 total_box_count = sum(len(t.items) for t in trucks)
+                total_trucks = len(trucks)
 
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("총 배차 차량", f"{len(trucks)}대")
-                m2.metric("총 예상 운송비", f"{total_cost:,}원")
-                m3.metric("총 적재 중량", f"{sum(t.total_weight for t in trucks):,.0f} kg")
-                m4.metric("총 박스 수량", f"{total_box_count:,} 개")
-                st.divider()
+                # 2. 통합 결과 요약 박스 (초록색 + 내부 Metric 통합)
+                st.markdown(f"""
+                <div class="result-summary-box">
+                    <div class="result-title">✅ 배차 분석 완료!</div>
+                    <div class="result-metrics">
+                        <div class="metric-item">
+                            <span class="metric-label">총 배차 차량</span>
+                            <span class="metric-value">{total_trucks}대</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">총 예상 운송비</span>
+                            <span class="metric-value" style="color:#d32f2f;">{total_cost:,}원</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">총 적재 중량</span>
+                            <span class="metric-value">{total_weight:,.0f}kg</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">총 박스 수량</span>
+                            <span class="metric-value">{total_box_count:,}개</span>
+                        </div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
 
                 tabs = st.tabs([f"{t.name}" for t in trucks])
                 for i, tab in enumerate(tabs):
@@ -751,10 +785,10 @@ if uploaded_file:
                             <div class="dashboard-card">
                                 <span class="card-title">⚖️ 무게 분포</span>
                                 <div class="quadrant-box">
-                                    <div class="q-cell">FL<br><span style="color:#3b82f6;">{q_front_left/total_w*100:.0f}%</span></div>
-                                    <div class="q-cell">FR<br><span style="color:#3b82f6;">{q_front_right/total_w*100:.0f}%</span></div>
-                                    <div class="q-cell">RL<br><span style="color:#3b82f6;">{q_rear_left/total_w*100:.0f}%</span></div>
-                                    <div class="q-cell">RR<br><span style="color:#3b82f6;">{q_rear_right/total_w*100:.0f}%</span></div>
+                                    <div class="q-cell">앞-좌<br><span style="color:#3b82f6;">{q_front_left/total_w*100:.0f}%</span></div>
+                                    <div class="q-cell">앞-우<br><span style="color:#3b82f6;">{q_front_right/total_w*100:.0f}%</span></div>
+                                    <div class="q-cell">뒤-좌<br><span style="color:#3b82f6;">{q_rear_left/total_w*100:.0f}%</span></div>
+                                    <div class="q-cell">뒤-우<br><span style="color:#3b82f6;">{q_rear_right/total_w*100:.0f}%</span></div>
                                 </div>
                             </div>
                             """, unsafe_allow_html=True)
