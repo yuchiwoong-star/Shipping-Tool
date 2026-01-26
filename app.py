@@ -50,7 +50,7 @@ class Truck:
         # 피벗: (x, y, z)
         self.pivots = [[0.0, 0.0, 0.0]]
         self.gap_mm = gap_mm
-        self.max_layer = max_layer # 적재 단수 제한
+        self.max_layer = max_layer 
 
     def put_item(self, item):
         BOX_GAP_L = self.gap_mm
@@ -77,7 +77,6 @@ class Truck:
                 fit_level = max_below_level + 1
             else: fit_level = 1
             
-            # [수정] 단수 제한 체크
             if fit_level > self.max_layer: continue
             
             best_pivot = p
@@ -128,10 +127,8 @@ st.markdown("""
         height: 50px; white-space: pre-wrap; background-color: #F0F2F6; border-radius: 5px;
         color: #31333F; font-size: 16px; font-weight: 600; padding: 0px 20px;
     }
-    /* 탭 선택 시 색상 변경 (빨강 계열 #FF4B4B) */
     .stTabs [aria-selected="true"] { background-color: #FF4B4B !important; color: white !important; }
     
-    /* 하이라이트 박스 */
     .highlight-box {
         background-color: #e6fffa;
         border: 2px solid #38b2ac;
@@ -147,7 +144,6 @@ st.markdown("""
         margin: 0;
     }
 
-    /* 통합 대시보드 카드 스타일 */
     .dashboard-card {
         background-color: #ffffff;
         border: 1px solid #e0e0e0;
@@ -168,7 +164,6 @@ st.markdown("""
         padding-bottom: 5px;
     }
     
-    /* 요약 정보 텍스트 */
     .summary-row {
         display: flex;
         justify-content: space-between;
@@ -181,7 +176,6 @@ st.markdown("""
         color: #000;
     }
 
-    /* 커스텀 프로그레스 바 */
     .custom-progress-container {
         margin-bottom: 12px;
     }
@@ -200,12 +194,11 @@ st.markdown("""
         overflow: hidden;
     }
     .progress-fill {
-        background-color: #FF4B4B; /* 빨간색 통일 */
+        background-color: #FF4B4B; 
         height: 100%;
         border-radius: 10px;
     }
 
-    /* 4분면 그리드 (2x2) */
     .quadrant-box {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -222,7 +215,7 @@ st.markdown("""
         justify-content: center;
         align-items: center;
         font-size: 13px;
-        font-weight: normal; /* 볼드 제거 */
+        font-weight: normal; 
         color: #000000;
         background-color: white;
     }
@@ -231,17 +224,16 @@ st.markdown("""
     .q-cell:nth-child(3) { border-right: 1px solid #ddd; border-bottom-left-radius: 5px;}
     .q-cell:nth-child(4) { border-bottom-right-radius: 5px;}
 
-    /* 결과 요약 박스 (통합형 - 빨간색 테마 + 검정 글씨) */
     .result-summary-box {
-        background-color: #fff5f5; /* 연한 빨강 배경 */
-        border: 2px solid #FF4B4B; /* 진한 빨강 테두리 */
+        background-color: #fff5f5; 
+        border: 2px solid #FF4B4B; 
         border-radius: 10px;
         padding: 20px;
         margin-bottom: 20px;
         text-align: center;
     }
     .result-title {
-        color: #000000; /* 제목 검정색 */
+        color: #000000;
         font-size: 22px;
         font-weight: bold;
         margin-bottom: 15px;
@@ -260,13 +252,13 @@ st.markdown("""
     }
     .metric-label {
         font-size: 14px;
-        color: #000000; /* 라벨 검정색 */
+        color: #000000; 
         margin-bottom: 5px;
     }
     .metric-value {
         font-size: 24px;
         font-weight: 800;
-        color: #000000; /* 값 검정색 */
+        color: #000000; 
     }
 
 </style>
@@ -641,7 +633,7 @@ gap_mm = int(opt_gap_str.replace("mm", ""))
 opt_stack_limit = st.sidebar.radio("최대 적재 단수", ["3단", "4단", "제한없음"], index=1, horizontal=True, on_change=clear_result)
 if "3단" in opt_stack_limit: max_layer_val = 3
 elif "4단" in opt_stack_limit: max_layer_val = 4
-else: max_layer_val = 100 # 사실상 제한 없음
+else: max_layer_val = 100 # 제한 없음
 
 if uploaded_file:
     try:
@@ -695,17 +687,31 @@ if uploaded_file:
 
             # 1. 분석 History
             with st.expander("📜 분석 History (Click to view details)", expanded=False):
-                st.write(f"- [System] 데이터 파일 로드 완료 ({len(df)}건)")
-                st.write(f"- [User] 선택 모드: {opt_mode}")
-                st.write(f"- [Option] 최대 적재 단수: {opt_stack_limit}")
-                st.write("- [Process] 1톤 ~ 25톤 트럭 시뮬레이션 시작...")
-                st.write("- [Process] 적재 알고리즘 수행 (Greedy Strategy)")
+                st.markdown(f"**1️⃣ 데이터 및 옵션 확인**")
+                st.text(f"   - 입력 데이터: {len(df)}건 로드 완료")
+                st.text(f"   - 선택 모드: {opt_mode}")
+                st.text(f"   - 제약 조건: 높이 {opt_height}mm / {opt_stack_limit}")
+
+                st.markdown(f"**2️⃣ 1차 배차 시뮬레이션 (Allocation)**")
                 if mode_key == 'length':
-                    st.write("- [Optimization] 길이 기준 그룹핑 및 피라미드 정렬 수행")
+                    st.text("   - 전략: [길이 우선] 긴 화물부터 배차하여 적재함 길이 효율 극대화")
+                    st.text("   - 정렬: 길이(L) → 폭(W) → 중량 순서로 투입")
                 else:
-                    st.write("- [Optimization] 밀도 기준 빈틈 채우기 수행")
-                st.write("- [Result] 최종 비용 및 적재량 산출 완료")
-                st.write("- [Result] 배차 최적화 작업 종료.")
+                    st.text("   - 전략: [바닥면적 우선] 크고 무거운 화물부터 배차하여 바닥면 확보")
+                    st.text("   - 정렬: 중량 → 바닥면적(WxL) → 길이 순서로 투입")
+
+                st.markdown(f"**3️⃣ 2차 적재 최적화 (Restacking)**")
+                if mode_key == 'length':
+                    st.text("   - 그룹핑: 길이 오차 50cm 이내 화물끼리 줄(Row) 형성")
+                    st.text("   - 패턴: 각 줄 내부에서 '피라미드(▲)' 형태로 재배열 (안전성 확보)")
+                    st.text("   - 배치: 키가 큰 줄을 안쪽(운전석), 작은 줄을 문 쪽으로 이동")
+                else:
+                    st.text("   - 채우기: 확정된 화물을 밀도 순으로 재정렬하여 빈틈없이 채움 (Tetris)")
+                    st.text("   - 안정화: 인위적인 위치 변경을 최소화하여 적재 깨짐 방지")
+                    st.text("   - 중심잡기: 전체 화물 덩어리를 트럭 정중앙으로 이동")
+
+                st.markdown(f"**4️⃣ 최종 결과 도출**")
+                st.text(f"   - 총 {len(trucks)}대 배차 완료 (비용 최적화 달성)")
 
             if trucks:
                 total_cost = sum(t.cost for t in trucks)
