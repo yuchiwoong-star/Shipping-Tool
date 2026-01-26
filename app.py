@@ -178,14 +178,27 @@ def load_data(df):
 def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
     MARGIN_LENGTH = 200 
 
-    # [수정] 최적화의 핵심: 길이(d) 우선 정렬
-    # 긴 화물을 먼저 처리해야 트럭 안쪽 깊숙이 배치하거나, 긴 트럭(16톤)을 선택할 확률이 높아짐
+    # [수정 1] 길이 우선 정렬 (긴 박스가 앞쪽으로)
     def sort_by_length_priority(items):
         return sorted(items, key=lambda x: (x.d, x.w, x.weight), reverse=True)
 
-    # [재배치용] 안정적 적재: 높이 -> 면적 순
-    def sort_for_stable_stacking(items):
-        return sorted(items, key=lambda x: (x.h, x.area, x.weight), reverse=True)
+    # [수정 2] 같은 길이 그룹 내에서의 'Mound Sort' (피라미드 적재)
+    def mound_sort_by_height(items):
+        # 높이 순으로 정렬 (작은것 -> 큰것)
+        s_items = sorted(items, key=lambda x: (x.h, x.area), reverse=False)
+        result = [None] * len(s_items)
+        left = 0
+        right = len(s_items) - 1
+        
+        # 좌-우-좌-우 배치 -> 결과적으로 [소, 중, 대, 중, 소] 형태가 됨
+        for i, item in enumerate(s_items):
+            if i % 2 == 0: # 짝수 인덱스 -> 왼쪽
+                result[left] = item
+                left += 1
+            else: # 홀수 인덱스 -> 오른쪽
+                result[right] = item
+                right -= 1
+        return result
 
     def recenter_truck_items(truck):
         if not truck.items: return
@@ -215,7 +228,7 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
                 if total_rem_weight > 10000 and spec['weight'] < 3500: continue
                 candidates.append((t_name, spec))
 
-            # [핵심 수정] 여기서 길이 우선 정렬 사용 (기존: 면적 or 하이브리드)
+            # 그리디 계산 시에도 길이 우선 정렬 사용 (차량 대수 최소화)
             rem = sort_by_length_priority(rem)
 
             for t_name, spec in candidates:
@@ -248,7 +261,7 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
     min_total_cost = float('inf')
     total_all_weight = sum(i.weight for i in all_items)
     
-    # 전체 아이템도 길이 우선 정렬
+    # 전체 최적화 시작 전 길이 우선 정렬
     sorted_all_items = sort_by_length_priority(all_items)
     
     for start_truck_name in TRUCK_DB:
@@ -284,16 +297,28 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
         best_solution.sort(key=lambda t: t.max_weight)
         for idx, t in enumerate(best_solution):
             
-            # [재배치] 배차 확정 후 재적재
+            # [최종 재배치] 배차 확정 후 그룹핑 적재
             items_in_truck = t.items[:] 
             t.items = []
             t.pivots = [[0.0, 0.0, 0.0]]
             t.total_weight = 0.0
             
-            # 확정된 차량 내에서는 "계단식 적재(안정성)"를 위해 높이/면적 순으로 재정렬
-            reordered_items = sort_for_stable_stacking(items_in_truck)
+            # 1단계: 길이(Depth)가 비슷한 것끼리 그룹핑 (긴 것부터)
+            # - 길이 기준으로 내림차순 정렬 후 그룹화
+            items_in_truck.sort(key=lambda x: x.d, reverse=True)
             
-            for item in reordered_items:
+            # 2단계: 각 길이 그룹 내에서 Mound Sort (피라미드) 적용 후 순차 적재
+            final_load_order = []
+            
+            # 길이 차이가 20cm(200mm) 이내면 같은 그룹으로 봄
+            for k, g in groupby(items_in_truck, key=lambda x: round(x.d / 200)):
+                group_list = list(g)
+                # 그룹 내 피라미드 정렬 (높은게 가운데로)
+                mounded_group = mound_sort_by_height(group_list)
+                final_load_order.extend(mounded_group)
+                
+            # 3단계: 최종 순서대로 적재
+            for item in final_load_order:
                 if item is None: continue
                 retry_box = Box(item.name, item.w, item.h, item.d, item.weight)
                 retry_box.is_heavy = item.is_heavy
@@ -378,6 +403,7 @@ def draw_truck_3d(truck, limit_count=None):
 
     draw_arrow_dim([0, -OFFSET, 0], [W, -OFFSET, 0], f"폭 : {int(W)}")
     draw_arrow_dim([-OFFSET, 0, 0], [-OFFSET, L, 0], f"길이 : {int(L)}")
+    
     draw_arrow_dim([-OFFSET, L, 0], [-OFFSET, L, LIMIT_H], f"높이제한 : {int(LIMIT_H)}", color='red')
     fig.add_trace(go.Scatter3d(x=[0, W, W, 0, 0], y=[0, 0, L, L, 0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False, hoverinfo='skip'))
 
@@ -387,7 +413,9 @@ def draw_truck_3d(truck, limit_count=None):
     for item in items_to_draw:
         col = '#FF6B6B' if item.is_heavy else '#FAD7A0'
         hover_text = f"<b>📦 {item.name}</b><br>규격: {int(item.w)}x{int(item.d)}x{int(item.h)}<br>중량: {int(item.weight):,}kg<br>적재단수: {item.level}단"
+        
         draw_cube(item.x, item.y, item.z, item.w, item.d, item.h, col, '#000000', hovertext=hover_text)
+        
         annotations.append(dict(x=item.x + item.w/2, y=item.y + item.d/2, z=item.z + item.h/2, text=f"<b>{item.name}</b>", xanchor="center", yanchor="middle", showarrow=False, font=dict(color="black", size=11), bgcolor="rgba(255,255,255,0.5)"))
 
     eye = dict(x=-1.8, y=-1.8, z=1.2); up = dict(x=0, y=0, z=1)
@@ -493,8 +521,35 @@ if uploaded_file:
 
                             st.progress(vol_pct, text=f"📏 체적 적재율 ({display_height/1000:.1f}m기준): {vol_pct*100:.1f}%")
                             st.progress(weight_pct, text=f"⚖️ 중량 적재율: {weight_pct*100:.1f}%")
-                            st.divider()
+                            
+                            if HAS_REPORTLAB:
+                                buffer = BytesIO()
+                                c = canvas.Canvas(buffer, pagesize=A4)
+                                width, height = A4
+                                c.setFont("Helvetica-Bold", 16)
+                                c.drawString(30, height - 50, f"Loading Manifest - {t.name}")
+                                c.setFont("Helvetica", 10)
+                                c.drawString(30, height - 70, f"Total Weight: {t.total_weight:,.0f} kg")
+                                c.drawString(30, height - 90, f"Box Count: {len(t.items)} ea")
+                                
+                                # Loading List
+                                y = height - 130
+                                c.setFont("Helvetica-Bold", 10)
+                                c.drawString(30, y, "No.  Box Name       Size(WxDxH)        Weight")
+                                c.line(30, y-5, 550, y-5)
+                                y -= 20
+                                c.setFont("Helvetica", 10)
+                                for idx, item in enumerate(t.items):
+                                    if y < 50: 
+                                        c.showPage()
+                                        y = height - 50
+                                    c.drawString(30, y, f"{idx+1}.  {item.name}   {int(item.w)}x{int(item.d)}x{int(item.h)}   {int(item.weight)}kg")
+                                    y -= 15
+                                c.save()
+                                buffer.seek(0)
+                                st.download_button("📄 PDF 다운로드", buffer, f"{t.name}.pdf", "application/pdf", key=f"pdf_{i}")
 
+                            st.divider()
                             st.markdown("##### ⚖️ 무게 분포 (4분면)")
                             mid_y = t.d / 2; mid_x = t.w / 2  
                             q_front_left = q_front_right = q_rear_left = q_rear_right = 0.0
