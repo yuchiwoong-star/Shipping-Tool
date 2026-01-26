@@ -130,6 +130,22 @@ st.markdown("""
     /* 탭 선택 시 색상 변경 (빨강 계열 #FF4B4B) */
     .stTabs [aria-selected="true"] { background-color: #FF4B4B !important; color: white !important; }
     
+    /* 하이라이트 박스 */
+    .highlight-box {
+        background-color: #e6fffa;
+        border: 2px solid #38b2ac;
+        border-radius: 10px;
+        padding: 15px;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    .highlight-text {
+        color: #234e52;
+        font-size: 20px;
+        font-weight: bold;
+        margin: 0;
+    }
+
     /* 통합 대시보드 카드 스타일 */
     .dashboard-card {
         background-color: #ffffff;
@@ -593,7 +609,6 @@ def draw_truck_3d(truck, limit_count=None):
 # 5. 메인 UI
 # ==========================================
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
-st.markdown("✅ **적용 규칙 : 회전 금지 | 상단 80% 지지 | 길이 여유 20cm | 하중 준수 | 2가지 최적화 모드 (길이/면적) | 자동 무게중심 보정**")
 
 def clear_result():
     if 'optimized_result' in st.session_state:
@@ -605,6 +620,7 @@ st.sidebar.divider()
 st.sidebar.subheader("⚙️ 적재 옵션 설정")
 st.sidebar.info("💡 원하는 배차 결과가 나오지 않았다면, 아래 옵션을 조정하여 재실행해 보세요.")
 
+# [모드 선택]
 opt_mode = st.sidebar.radio(
     "적재 우선순위 모드",
     options=["길이 우선 (긴 화물 / 규격이 일정할 때)", "바닥면적 우선 (크기가 다양한 혼합 화물)"],
@@ -613,6 +629,7 @@ opt_mode = st.sidebar.radio(
 )
 mode_key = 'length' if "길이" in opt_mode else 'area'
 
+# [기본값 1300mm로 변경 (index=1)]
 opt_height_str = st.sidebar.radio("적재 높이 제한", options=["1200mm", "1300mm", "1400mm"], index=1, horizontal=True, on_change=clear_result)
 opt_height = int(opt_height_str.replace("mm", ""))
 
@@ -678,7 +695,8 @@ if uploaded_file:
                 st.markdown(f"**1️⃣ 데이터 및 옵션 확인**")
                 st.text(f"   - 입력 데이터: {len(df)}건 로드 완료")
                 st.text(f"   - 선택 모드: {opt_mode}")
-                st.text(f"   - 제약 조건: 높이 {opt_height}mm / {opt_stack_limit}")
+                # [수정] 박스 간 간격 정보 추가
+                st.text(f"   - 제약 조건: 높이 {opt_height}mm / 간격 {gap_mm}mm / {opt_stack_limit}")
 
                 st.markdown(f"**2️⃣ 1차 배차 시뮬레이션 (Allocation)**")
                 if mode_key == 'length':
