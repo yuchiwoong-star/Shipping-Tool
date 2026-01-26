@@ -47,7 +47,6 @@ class Truck:
         self.cost = int(cost)
         self.items = []
         self.total_weight = 0.0
-        # 피벗: (x, y, z)
         self.pivots = [[0.0, 0.0, 0.0]]
         self.gap_mm = gap_mm
         self.limit_level_on = limit_level_on
@@ -56,7 +55,6 @@ class Truck:
         BOX_GAP_L = self.gap_mm
         if self.total_weight + item.weight > self.max_weight: return False
         
-        # [핵심] 피벗 정렬: Z(바닥) -> Y(안쪽) -> X(왼쪽)
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
         
         best_pivot = None
@@ -120,6 +118,7 @@ class Truck:
 # ==========================================
 st.set_page_config(layout="wide", page_title="출하박스 적재 최적화 시스템")
 
+# [스타일 커스텀]
 st.markdown("""
 <style>
     .stTabs [data-baseweb="tab-list"] { gap: 8px; }
@@ -129,7 +128,7 @@ st.markdown("""
     }
     .stTabs [aria-selected="true"] { background-color: #FF4B4B !important; color: white !important; }
     
-    /* 하이라이트 박스 스타일 */
+    /* 하이라이트 박스 */
     .highlight-box {
         background-color: #e6fffa;
         border: 2px solid #38b2ac;
@@ -144,26 +143,47 @@ st.markdown("""
         font-weight: bold;
         margin: 0;
     }
+
+    /* 정보 카드 (통일된 디자인) */
+    .info-card {
+        background-color: #f8f9fa;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        padding: 10px;
+        text-align: center;
+        height: 100%;
+    }
+    .info-title {
+        font-size: 14px;
+        font-weight: bold;
+        color: #555;
+        margin-bottom: 5px;
+        display: block;
+    }
+    .info-value {
+        font-size: 16px;
+        font-weight: bold;
+        color: #000;
+        display: block;
+    }
     
-    /* 무게 분포 4분면 스타일 */
+    /* 4분면 그리드 */
     .quadrant-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
         grid-template-rows: 1fr 1fr;
-        gap: 5px;
+        gap: 2px;
         text-align: center;
-        font-size: 14px;
+        font-size: 12px;
         font-weight: bold;
-        background-color: #f8f9fa;
-        padding: 5px;
+        background-color: #eee;
+        padding: 2px;
         border-radius: 5px;
-        border: 1px solid #ddd;
     }
     .q-cell {
         padding: 5px;
         background-color: white;
         border-radius: 3px;
-        border: 1px solid #eee;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -311,6 +331,7 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on, mode):
         best_start_solution = None
         min_start_cost = float('inf')
         total_w = sum(i.weight for i in items_input)
+        
         for start_truck_name in TRUCK_DB:
             spec = TRUCK_DB[start_truck_name]
             if total_w > 15000 and spec['weight'] < 4000: continue
@@ -474,12 +495,10 @@ def draw_truck_3d(truck, limit_count=None):
 
     draw_arrow_dim([0, -OFFSET, 0], [W, -OFFSET, 0], f"폭 : {int(W)}")
     draw_arrow_dim([-OFFSET, 0, 0], [-OFFSET, L, 0], f"길이 : {int(L)}")
-    
     draw_arrow_dim([-OFFSET, L, 0], [-OFFSET, L, LIMIT_H], f"높이제한 : {int(LIMIT_H)}", color='red')
     fig.add_trace(go.Scatter3d(x=[0, W, W, 0, 0], y=[0, 0, L, L, 0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False, hoverinfo='skip'))
 
     items_to_draw = truck.items
-    
     annotations = []
     for item in items_to_draw:
         col = '#FF6B6B' if item.is_heavy else '#FAD7A0'
@@ -507,14 +526,13 @@ st.sidebar.divider()
 st.sidebar.subheader("⚙️ 적재 옵션 설정")
 st.sidebar.info("비용이 비싸게 나온다면 '높이 제한'을 늘리고 '간격'을 해제해보세요.")
 
-# [모드 선택 옵션] - 문구 변경됨
+# [모드 선택]
 opt_mode = st.sidebar.radio(
     "적재 우선순위 모드",
     options=["길이 우선 (긴 화물 / 규격이 일정할 때)", "바닥면적 우선 (크기가 다양한 혼합 화물)"],
     index=0,
     on_change=clear_result
 )
-# 키워드로 매핑
 mode_key = 'length' if "길이" in opt_mode else 'area'
 
 opt_height_str = st.sidebar.radio("적재 높이 제한", options=["1200mm", "1300mm", "1400mm"], index=0, horizontal=True, on_change=clear_result)
@@ -558,20 +576,26 @@ if uploaded_file:
             with st.status(f"🚀 {opt_mode} 모드로 분석 중입니다...", expanded=True) as status:
                 st.write("1. 데이터를 읽고 변환하고 있습니다...")
                 time.sleep(0.1) 
+                
+                # 분석 History 기능 추가 (Expander)
+                with st.expander("📜 분석 History", expanded=False):
+                    st.write("- 데이터 로드 및 전처리 완료")
+                    st.write(f"- 선택 모드: {opt_mode}")
+                    st.write("- 시뮬레이션 엔진 가동...")
+                    st.write("- 차량별 적재 가능성 탐색 중...")
+                    st.write("- 최적 배치 알고리즘 수행...")
+                    st.write("- 결과 집계 및 시각화 생성 중...")
+                
                 items = load_data(df)
                 if not items:
                     st.error("데이터 변환 실패.")
                     status.update(label="오류 발생", state="error")
                 else:
-                    st.write("2. 최적화 엔진 가동 중... (물량에 따라 시간이 소요됩니다)")
                     time.sleep(0.1) 
                     trucks = run_optimization(items, opt_height, gap_mm, opt_level, mode=mode_key)
-                    st.write("3. 결과 집계 및 시각화 준비 중...")
                     st.session_state['optimized_result'] = trucks
                     st.session_state['calc_opt_height'] = opt_height
                     time.sleep(0.2)
-                    
-                    # 상태 업데이트 (성공 메시지 준비)
                     status.update(label="배차 분석 완료!", state="complete", expanded=False)
 
         if 'optimized_result' in st.session_state:
@@ -587,9 +611,8 @@ if uploaded_file:
 
             if trucks:
                 total_cost = sum(t.cost for t in trucks)
-                total_box_count = sum(len(t.items) for t in trucks) # 박스 수량 집계
+                total_box_count = sum(len(t.items) for t in trucks)
 
-                # [UI] 4개 지표 (박스 수량 추가)
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("총 배차 차량", f"{len(trucks)}대")
                 m2.metric("총 예상 운송비", f"{total_cost:,}원")
@@ -602,7 +625,7 @@ if uploaded_file:
                     with tab:
                         t = trucks[i]
                         
-                        # [UI Layout] 먼저 필요한 계산 수행
+                        # [UI Row 1] 상단 가로형 정보 바 (통일된 카드 형태)
                         truck_limit_vol = t.w * t.d * display_height 
                         used_vol = sum([b.vol for b in t.items])
                         vol_pct = min(1.0, used_vol / truck_limit_vol) if truck_limit_vol > 0 else 0
@@ -625,44 +648,46 @@ if uploaded_file:
                             q_front_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, 0, mid_y) / box_area)
                             q_rear_left += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, mid_y, t.d) / box_area)
                             q_rear_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d) / box_area)
-                        
                         total_w = t.total_weight if t.total_weight > 0 else 1
+
+                        # [상단 정보 그리드]
+                        c1, c2, c3 = st.columns([1, 1, 1.2])
                         
-                        # [UI Row 1] 상단 가로형 정보 바 (집계 / 적재율 / 무게분포)
-                        # 컬럼 비율 조정: [집계(1) / 적재율(1) / 무게분포(1.5)]
-                        c_sum, c_vol, c_bal = st.columns([1.2, 1.5, 2.5])
+                        # 1. 요약 정보
+                        with c1:
+                            st.markdown(f"""
+                            <div class="info-card">
+                                <span class="info-title">📦 적재 정보</span>
+                                <span class="info-value">박스 {len(t.items)}개 / {t.total_weight:,.0f}kg</span><br>
+                                <span class="info-value" style="color:#e53e3e;">비용: {t.cost:,}원</span>
+                            </div>
+                            """, unsafe_allow_html=True)
                         
-                        with c_sum:
-                            st.markdown("##### 📊 요약")
-                            st.dataframe(pd.DataFrame({
-                                "항목": ["박스 수", "적재 중량", "운송 비용"],
-                                "값": [f"{len(t.items)}개", f"{t.total_weight:,.0f} kg", f"{t.cost:,} 원"]
-                            }), hide_index=True, use_container_width=True)
-                            
-                        with c_vol:
-                            st.markdown("##### 📉 적재율")
+                        # 2. 적재율 (Progress Bar 형태 유지하되 카드 안에 넣음)
+                        with c2:
+                            st.markdown("""<div class="info-card"><span class="info-title">📉 적재율</span>""", unsafe_allow_html=True)
                             st.progress(vol_pct, text=f"체적: {vol_pct*100:.1f}%")
                             st.progress(weight_pct, text=f"중량: {weight_pct*100:.1f}%")
-                            
-                        with c_bal:
-                            st.markdown("##### ⚖️ 무게 분포")
-                            # 2x2 그리드 HTML 커스텀
+                            st.markdown("</div>", unsafe_allow_html=True)
+
+                        # 3. 무게 분포 (2x2 그리드)
+                        with c3:
                             st.markdown(f"""
                             <div class="quadrant-grid">
-                                <div class="q-cell">FL (앞-좌)<br>{q_front_left/total_w*100:.0f}%<br>({int(q_front_left)}kg)</div>
-                                <div class="q-cell">FR (앞-우)<br>{q_front_right/total_w*100:.0f}%<br>({int(q_front_right)}kg)</div>
-                                <div class="q-cell">RL (뒤-좌)<br>{q_rear_left/total_w*100:.0f}%<br>({int(q_rear_left)}kg)</div>
-                                <div class="q-cell">RR (뒤-우)<br>{q_rear_right/total_w*100:.0f}%<br>({int(q_rear_right)}kg)</div>
+                                <div class="q-cell">FL (앞-좌)<br>{q_front_left/total_w*100:.0f}%</div>
+                                <div class="q-cell">FR (앞-우)<br>{q_front_right/total_w*100:.0f}%</div>
+                                <div class="q-cell">RL (뒤-좌)<br>{q_rear_left/total_w*100:.0f}%</div>
+                                <div class="q-cell">RR (뒤-우)<br>{q_rear_right/total_w*100:.0f}%</div>
                             </div>
                             """, unsafe_allow_html=True)
 
-                        st.divider()
-                        
-                        # [UI Row 2] 좌측: 리스트(Expander) / 우측: 3D 차트
-                        c_list, c_chart = st.columns([1, 2.5]) 
+                        st.write("") # 간격
+
+                        # [UI Row 2] 리스트 & 차트
+                        c_list, c_chart = st.columns([1, 2]) 
                         
                         with c_list:
-                            # PDF 다운로드 버튼
+                            # PDF 버튼을 리스트 위에 배치
                             if HAS_REPORTLAB:
                                 buffer = BytesIO()
                                 c = canvas.Canvas(buffer, pagesize=A4)
@@ -688,10 +713,7 @@ if uploaded_file:
                                 buffer.seek(0)
                                 st.download_button("📄 PDF 다운로드", buffer, f"{t.name}.pdf", "application/pdf", key=f"pdf_{i}")
                             
-                            st.write("") # 간격
-                            
-                            # 적재 리스트 Expander
-                            with st.expander("📦 상세 적재 리스트 보기", expanded=False):
+                            with st.expander("📦 상세 적재 리스트 (펼치기)", expanded=False):
                                 detail_df = pd.DataFrame([{"No": i+1, "박스명": b.name, "크기": f"{int(b.w)}x{int(b.d)}x{int(b.h)}", "무게": int(b.weight)} for i, b in enumerate(t.items)])
                                 st.dataframe(detail_df, hide_index=True, use_container_width=True, height=400)
 
