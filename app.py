@@ -497,15 +497,16 @@ uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['x
 st.sidebar.divider()
 
 st.sidebar.subheader("⚙️ 적재 옵션 설정")
-st.sidebar.info("비용이 비싸게 나온다면 '높이 제한'을 늘리고 '간격'을 해제해보세요.")
+# 파란색 문구 박스 삭제됨
 
-# [모드 선택 옵션]
+# [모드 선택 옵션] - 문구 변경됨
 opt_mode = st.sidebar.radio(
-    "적재 모드 선택",
-    options=["🅰️ 길이 우선 (Test #2 추천)", "🅱️ 바닥면적 우선 (Test #0,#1 추천)"],
+    "적재 우선순위 모드",
+    options=["길이 우선 (긴 화물 / 규격이 일정할 때)", "바닥면적 우선 (크기가 다양한 혼합 화물)"],
     index=0,
     on_change=clear_result
 )
+# 키워드로 매핑
 mode_key = 'length' if "길이" in opt_mode else 'area'
 
 opt_height_str = st.sidebar.radio("적재 높이 제한", options=["1200mm", "1300mm", "1400mm"], index=0, horizontal=True, on_change=clear_result)
