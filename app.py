@@ -50,7 +50,7 @@ class Truck:
         # 피벗: (x, y, z)
         self.pivots = [[0.0, 0.0, 0.0]]
         self.gap_mm = gap_mm
-        self.max_layer = max_layer 
+        self.max_layer = max_layer
 
     def put_item(self, item):
         BOX_GAP_L = self.gap_mm
@@ -127,23 +127,10 @@ st.markdown("""
         height: 50px; white-space: pre-wrap; background-color: #F0F2F6; border-radius: 5px;
         color: #31333F; font-size: 16px; font-weight: 600; padding: 0px 20px;
     }
+    /* 탭 선택 시 색상 변경 (빨강 계열 #FF4B4B) */
     .stTabs [aria-selected="true"] { background-color: #FF4B4B !important; color: white !important; }
     
-    .highlight-box {
-        background-color: #e6fffa;
-        border: 2px solid #38b2ac;
-        border-radius: 10px;
-        padding: 15px;
-        text-align: center;
-        margin-bottom: 20px;
-    }
-    .highlight-text {
-        color: #234e52;
-        font-size: 20px;
-        font-weight: bold;
-        margin: 0;
-    }
-
+    /* 통합 대시보드 카드 스타일 */
     .dashboard-card {
         background-color: #ffffff;
         border: 1px solid #e0e0e0;
@@ -164,6 +151,7 @@ st.markdown("""
         padding-bottom: 5px;
     }
     
+    /* 요약 정보 텍스트 */
     .summary-row {
         display: flex;
         justify-content: space-between;
@@ -176,6 +164,7 @@ st.markdown("""
         color: #000;
     }
 
+    /* 커스텀 프로그레스 바 */
     .custom-progress-container {
         margin-bottom: 12px;
     }
@@ -194,11 +183,12 @@ st.markdown("""
         overflow: hidden;
     }
     .progress-fill {
-        background-color: #FF4B4B; 
+        background-color: #FF4B4B; /* 빨간색 통일 */
         height: 100%;
         border-radius: 10px;
     }
 
+    /* 4분면 그리드 (2x2) */
     .quadrant-box {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -224,16 +214,17 @@ st.markdown("""
     .q-cell:nth-child(3) { border-right: 1px solid #ddd; border-bottom-left-radius: 5px;}
     .q-cell:nth-child(4) { border-bottom-right-radius: 5px;}
 
+    /* 결과 요약 박스 (통합형 - 빨간색 테마 + 검정 글씨) */
     .result-summary-box {
-        background-color: #fff5f5; 
-        border: 2px solid #FF4B4B; 
+        background-color: #fff5f5; /* 연한 빨강 배경 */
+        border: 2px solid #FF4B4B; /* 진한 빨강 테두리 */
         border-radius: 10px;
         padding: 20px;
         margin-bottom: 20px;
         text-align: center;
     }
     .result-title {
-        color: #000000;
+        color: #000000; /* 제목 검정색 */
         font-size: 22px;
         font-weight: bold;
         margin-bottom: 15px;
@@ -252,13 +243,13 @@ st.markdown("""
     }
     .metric-label {
         font-size: 14px;
-        color: #000000; 
+        color: #000000; /* 라벨 검정색 */
         margin-bottom: 5px;
     }
     .metric-value {
         font-size: 24px;
         font-weight: 800;
-        color: #000000; 
+        color: #000000; /* 값 검정색 */
     }
 
 </style>
@@ -602,7 +593,7 @@ def draw_truck_3d(truck, limit_count=None):
 # 5. 메인 UI
 # ==========================================
 st.title("📦 출하박스 적재 최적화 시스템 (배차비용 최소화)")
-st.markdown("✅ **규칙 : 비용최소화 | 회전금지 | 길이우선 적재 | 바닥면 80% 지지충족 | 하중제한 준수 | 차량길이 20cm 여유 | 상위 10% 중량박스 빨간색 표시 | 안전 우선 적재(밴딩 무너짐 고려)**")
+st.markdown("✅ **적용 규칙 : 회전 금지 | 상단 80% 지지 | 길이 여유 20cm | 하중 준수 | 2가지 최적화 모드 (길이/면적) | 자동 무게중심 보정**")
 
 def clear_result():
     if 'optimized_result' in st.session_state:
@@ -614,7 +605,6 @@ st.sidebar.divider()
 st.sidebar.subheader("⚙️ 적재 옵션 설정")
 st.sidebar.info("💡 원하는 배차 결과가 나오지 않았다면, 아래 옵션을 조정하여 재실행해 보세요.")
 
-# [모드 선택]
 opt_mode = st.sidebar.radio(
     "적재 우선순위 모드",
     options=["길이 우선 (긴 화물 / 규격이 일정할 때)", "바닥면적 우선 (크기가 다양한 혼합 화물)"],
@@ -623,17 +613,16 @@ opt_mode = st.sidebar.radio(
 )
 mode_key = 'length' if "길이" in opt_mode else 'area'
 
-opt_height_str = st.sidebar.radio("적재 높이 제한", options=["1200mm", "1300mm", "1400mm"], index=0, horizontal=True, on_change=clear_result)
+opt_height_str = st.sidebar.radio("적재 높이 제한", options=["1200mm", "1300mm", "1400mm"], index=1, horizontal=True, on_change=clear_result)
 opt_height = int(opt_height_str.replace("mm", ""))
 
 opt_gap_str = st.sidebar.radio("박스 간 간격 (길이방향)", options=["0mm", "100mm", "200mm", "300mm"], index=2, horizontal=True, on_change=clear_result)
 gap_mm = int(opt_gap_str.replace("mm", ""))
 
-# [단수 제한 수정: 라디오 버튼]
 opt_stack_limit = st.sidebar.radio("최대 적재 단수", ["3단", "4단", "제한없음"], index=1, horizontal=True, on_change=clear_result)
 if "3단" in opt_stack_limit: max_layer_val = 3
 elif "4단" in opt_stack_limit: max_layer_val = 4
-else: max_layer_val = 100 # 제한 없음
+else: max_layer_val = 100 
 
 if uploaded_file:
     try:
@@ -685,7 +674,6 @@ if uploaded_file:
             trucks = st.session_state['optimized_result']
             display_height = st.session_state.get('calc_opt_height', 1300)
 
-            # 1. 분석 History
             with st.expander("📜 분석 History (Click to view details)", expanded=False):
                 st.markdown(f"**1️⃣ 데이터 및 옵션 확인**")
                 st.text(f"   - 입력 데이터: {len(df)}건 로드 완료")
@@ -719,7 +707,6 @@ if uploaded_file:
                 total_box_count = sum(len(t.items) for t in trucks)
                 total_trucks = len(trucks)
 
-                # 2. 통합 결과 요약 박스
                 st.markdown(f"""
                 <div class="result-summary-box">
                     <div class="result-title">✅ 배차 분석 완료!</div>
@@ -773,7 +760,6 @@ if uploaded_file:
                             q_rear_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d) / box_area)
                         total_w = t.total_weight if t.total_weight > 0 else 1
 
-                        # [상단 정보 그리드]
                         c1, c2, c3 = st.columns([1, 1, 1.2])
                         
                         with c1:
@@ -808,7 +794,6 @@ if uploaded_file:
                             """, unsafe_allow_html=True)
 
                         with c3:
-                            # 33% 초과 시 빨간색 표시
                             def get_color(val):
                                 return "#FF0000" if val > 33 else "#000000"
                             
@@ -831,7 +816,6 @@ if uploaded_file:
 
                         st.write("") 
 
-                        # [UI Row 2]
                         c_list, c_chart = st.columns([1, 2]) 
                         
                         with c_list:
