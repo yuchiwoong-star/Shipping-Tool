@@ -6,6 +6,7 @@ import math
 import uuid
 import time
 from itertools import groupby
+from io import BytesIO
 
 # ==========================================
 # 1. 커스텀 물리 엔진
@@ -136,7 +137,6 @@ class Truck:
 # ==========================================
 st.set_page_config(layout="wide", page_title="출하박스 적재 최적화 시스템")
 
-# 탭 스타일 CSS
 st.markdown("""
 <style>
     .stTabs [data-baseweb="tab-list"] {
@@ -213,12 +213,10 @@ def load_data(df):
 def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
     MARGIN_LENGTH = 200 
 
-    # [수정] 밴딩 친화적 정렬 (계단식 적재)
-    def sort_for_stable_stacking(items):
-        # 1순위: 높이(h) 내림차순 -> 높이가 같은 것끼리 모임 (평평한 층 형성)
-        # 2순위: 면적(area) 내림차순 -> 바닥에 큰 것
-        # 3순위: 무게(weight) 내림차순
-        return sorted(items, key=lambda x: (x.h, x.area, x.weight), reverse=True)
+    # [중요] 최적화(차량 수 줄이기)를 위한 정렬 함수
+    # 바닥 면적(Area)이 큰 순서대로 정렬해야 빈틈없이 꽉 채울 수 있음
+    def sort_by_density(items):
+        return sorted(items, key=lambda x: (x.area, x.weight, x.h), reverse=True)
 
     # [내부함수] 중앙 정렬 (X축 이동)
     def recenter_truck_items(truck):
@@ -240,32 +238,6 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
             new_pivots.append([p[0] + offset_x, p[1], p[2]])
         truck.pivots = new_pivots
 
-    def get_hybrid_sorted_items(items_to_sort):
-        return sorted(items_to_sort, key=lambda x: (
-            1 if x.d >= 2200 else 0,
-            x.w,
-            x.d,
-            x.weight
-        ), reverse=True)
-
-    def mound_sort_group(group_items):
-        s_items = sorted(group_items, key=lambda x: x.weight)
-        result = [None] * len(s_items)
-        left = 0; right = len(s_items) - 1
-        for i, item in enumerate(s_items):
-            if i % 2 == 0: result[left] = item; left += 1
-            else: result[right] = item; right -= 1
-        return result
-
-    def get_balanced_sorted_items(items_to_sort):
-        primary_sorted = get_hybrid_sorted_items(items_to_sort)
-        final_list = []
-        for k, g in groupby(primary_sorted, key=lambda x: (x.w, x.h, x.d)):
-            group_list = list(g)
-            if len(group_list) > 2: final_list.extend(mound_sort_group(group_list))
-            else: final_list.extend(sorted(group_list, key=lambda x: x.weight, reverse=True))
-        return final_list
-
     def solve_remaining_greedy(current_items):
         used_trucks = []
         rem = current_items[:]
@@ -282,7 +254,9 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
                     continue
                 candidates.append((t_name, spec))
 
-            rem = get_balanced_sorted_items(rem)
+            # [변경] 기존의 균형 정렬(Mound Sort) 대신 밀도 정렬(Density Sort) 사용
+            # 차량 대수를 줄이는 것이 최우선 목표이기 때문
+            rem = sort_by_density(rem)
 
             for t_name, spec in candidates:
                 t = Truck(t_name, spec['w'], limit_h, spec['l'] - MARGIN_LENGTH, spec['weight'], spec['cost'], gap_mm, limit_level_on)
@@ -314,7 +288,8 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
     min_total_cost = float('inf')
     
     total_all_weight = sum(i.weight for i in all_items)
-    sorted_all_items = get_balanced_sorted_items(all_items)
+    # 전체 아이템도 밀도 우선 정렬
+    sorted_all_items = sort_by_density(all_items)
     
     for start_truck_name in TRUCK_DB:
         spec = TRUCK_DB[start_truck_name]
@@ -349,15 +324,16 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
         best_solution.sort(key=lambda t: t.max_weight)
         for idx, t in enumerate(best_solution):
             
-            # [재배치] 배차 확정 후 재배치 로직 실행
+            # [재배치] 배차 확정 후 재적재
             items_in_truck = t.items[:] 
             
             t.items = []
             t.pivots = [[0.0, 0.0, 0.0]]
             t.total_weight = 0.0
             
-            # 1. 밴딩 친화적 정렬 (높이우선 -> 면적우선)
-            reordered_items = sort_for_stable_stacking(items_in_truck)
+            # 여기서도 동일하게 '면적 우선(Area Descending)' 정렬 사용
+            # 이유: 계산된 최소 차량 대수를 유지하려면 적재 방식도 동일해야 함
+            reordered_items = sort_by_density(items_in_truck)
             
             for item in reordered_items:
                 if item is None: continue
@@ -451,6 +427,7 @@ def draw_truck_3d(truck, limit_count=None):
     draw_arrow_dim([-OFFSET, L, 0], [-OFFSET, L, LIMIT_H], f"높이제한 : {int(LIMIT_H)}", color='red')
     fig.add_trace(go.Scatter3d(x=[0, W, W, 0, 0], y=[0, 0, L, L, 0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False, hoverinfo='skip'))
 
+    # 박스 그리기 (슬라이더 값만큼만 표시)
     items_to_draw = truck.items[:limit_count] if limit_count is not None else truck.items
     
     annotations = []
@@ -624,6 +601,7 @@ if uploaded_file:
                                 st.dataframe([{"박스명": b.name, "단수": f"{b.level}단"} for b in t.items], hide_index=True)
 
                         with c_chart:
+                            # [추가] limit_count 전달
                             st.plotly_chart(draw_truck_3d(t, limit_count=step), use_container_width=True)
             else: st.warning("적재 가능한 차량을 찾지 못했습니다.")
     except Exception as e: st.error(f"오류 발생: {e}")
