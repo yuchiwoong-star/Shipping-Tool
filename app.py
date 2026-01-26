@@ -55,6 +55,7 @@ class Truck:
         BOX_GAP_L = self.gap_mm
         if self.total_weight + item.weight > self.max_weight: return False
         
+        # [규칙] 안전 우선: 왼쪽 벽면부터 채우기
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
         
         best_pivot = None
@@ -175,20 +176,59 @@ def load_data(df):
 # ==========================================
 # 3. 최적화 알고리즘
 # ==========================================
-def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
+def run_optimization(all_items, limit_h, gap_mm, limit_level_on, mode='cost'):
     MARGIN_LENGTH = 200 
 
-    def sort_by_length_priority(items):
+    # --- 정렬 전략 함수들 ---
+    def sort_cost_mode(items):
+        # [비용 절감] 길이 -> 폭 -> 무게 순 (빈 공간 최소화)
         return sorted(items, key=lambda x: (x.d, x.w, x.weight), reverse=True)
 
-    # Deque를 활용한 중앙 집중 정렬 (King of the Hill)
+    def sort_safety_mode(items):
+        # [안전 우선] 무게 -> 면적 -> 길이 순 (무거운 것 바닥에)
+        return sorted(items, key=lambda x: (x.weight, x.area, x.d), reverse=True)
+
+    # --- 재배치용 서브 로직 ---
     def mound_sort_by_height(items):
+        # 높이 기준 피라미드 (King of the Hill)
         s_items = sorted(items, key=lambda x: (x.h, x.area, x.weight), reverse=True)
         dq = deque()
         for i, item in enumerate(s_items):
             if i % 2 == 0: dq.append(item)
             else: dq.appendleft(item)
         return list(dq)
+
+    def optimize_row_placement(truck):
+        # 줄 단위 Swap (높은 줄을 안쪽으로) - 비용 모드용
+        if not truck.items: return
+        items_by_row = []
+        sorted_items = sorted(truck.items, key=lambda x: x.y)
+        current_row = []
+        if sorted_items:
+            current_row_y = sorted_items[0].y
+            for item in sorted_items:
+                if abs(item.y - current_row_y) > 500:
+                    items_by_row.append(current_row)
+                    current_row = [item]
+                    current_row_y = item.y
+                else:
+                    current_row.append(item)
+            items_by_row.append(current_row)
+        if len(items_by_row) < 2: return
+        row_heights = []
+        for row in items_by_row:
+            max_h = max(item.h for item in row)
+            row_heights.append({'max_h': max_h, 'items': row, 'original_y': row[0].y})
+        row_heights.sort(key=lambda x: x['max_h'], reverse=True)
+        target_y_positions = sorted([r['original_y'] for r in row_heights])
+        new_items = []
+        for i, row_data in enumerate(row_heights):
+            y_diff = target_y_positions[i] - row_data['original_y']
+            for item in row_data['items']:
+                item.y += y_diff
+                new_items.append(item)
+        truck.items = new_items
+        truck.pivots = [] 
 
     def recenter_truck_items(truck):
         if not truck.items: return
@@ -203,62 +243,8 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
         for p in truck.pivots: new_pivots.append([p[0] + offset_x, p[1], p[2]])
         truck.pivots = new_pivots
 
-    # [신규] 줄 단위 Swap 로직 (높은 줄을 안쪽으로)
-    def optimize_row_placement(truck):
-        if not truck.items: return
-        
-        # 1. 박스들을 Y축(깊이) 기준으로 그룹핑 (줄 나누기)
-        # Y좌표가 50cm(500mm) 이내인 것들을 같은 줄로 간주
-        items_by_row = []
-        sorted_items = sorted(truck.items, key=lambda x: x.y)
-        
-        current_row = []
-        if sorted_items:
-            current_row_y = sorted_items[0].y
-            for item in sorted_items:
-                if abs(item.y - current_row_y) > 500: # 새로운 줄 시작
-                    items_by_row.append(current_row)
-                    current_row = [item]
-                    current_row_y = item.y
-                else:
-                    current_row.append(item)
-            items_by_row.append(current_row)
-        
-        if len(items_by_row) < 2: return # 줄이 1개면 교체 불필요
-
-        # 2. 각 줄의 대표 높이(최대 높이) 계산
-        row_heights = []
-        for row in items_by_row:
-            max_h = max(item.h for item in row)
-            row_heights.append({'max_h': max_h, 'items': row, 'original_y': row[0].y})
-        
-        # 3. 높이 기준 내림차순 정렬 (높은 줄이 리스트 앞쪽=트럭 안쪽)
-        # 트럭 안쪽(Y=0)부터 높은 짐을 채우는 것이 일반적인 적재 방식
-        row_heights.sort(key=lambda x: x['max_h'], reverse=True)
-        
-        # 4. 위치 스왑 실행
-        # 정렬된 순서대로 Y 좌표를 재할당 (원래 있던 줄의 Y좌표들을 순서대로 가져와 매핑)
-        target_y_positions = sorted([r['original_y'] for r in row_heights])
-        
-        # 트럭 초기화 후 재적재 방식이 아니라, 좌표만 이동시키는 방식 사용
-        new_items = []
-        for i, row_data in enumerate(row_heights):
-            target_y = target_y_positions[i]
-            # 해당 줄에 속한 박스들의 Y 이동량 계산
-            y_diff = target_y - row_data['original_y']
-            
-            for item in row_data['items']:
-                # 기존 객체의 좌표 수정
-                item.y += y_diff
-                new_items.append(item)
-        
-        # 트럭 아이템 리스트 업데이트 (순서는 바뀔 수 있음)
-        truck.items = new_items
-        
-        # 피벗은 복잡하므로 재계산 대신 초기화 (시각화엔 영향 없음)
-        truck.pivots = [] 
-
-    def solve_remaining_greedy(current_items):
+    # --- Step 1: 차량 배차 (Allocation) ---
+    def solve_remaining_greedy(current_items, sort_func):
         used_trucks = []
         rem = current_items[:]
         total_rem_weight = sum(i.weight for i in rem)
@@ -270,11 +256,11 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
             candidates = []
             for t_name in TRUCK_DB:
                 spec = TRUCK_DB[t_name]
-                if total_rem_weight > 10000 and spec['weight'] < 3500:
-                    continue
+                if total_rem_weight > 10000 and spec['weight'] < 3500: continue
                 candidates.append((t_name, spec))
 
-            rem = sort_by_length_priority(rem)
+            # 모드에 따른 정렬 적용
+            rem = sort_func(rem)
 
             for t_name, spec in candidates:
                 t = Truck(t_name, spec['w'], limit_h, spec['l'] - MARGIN_LENGTH, spec['weight'], spec['cost'], gap_mm, limit_level_on)
@@ -302,10 +288,15 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
             else: break 
         return used_trucks
 
+    # 메인 최적화 실행
     best_solution = None
     min_total_cost = float('inf')
+    
+    # 모드에 따라 정렬 함수 선택
+    current_sort_func = sort_cost_mode if mode == 'cost' else sort_safety_mode
+    
     total_all_weight = sum(i.weight for i in all_items)
-    sorted_all_items = sort_by_length_priority(all_items)
+    sorted_all_items = current_sort_func(all_items)
     
     for start_truck_name in TRUCK_DB:
         spec = TRUCK_DB[start_truck_name]
@@ -324,7 +315,7 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
         
         current_solution = [start_truck]
         if remaining:
-            sub_solution = solve_remaining_greedy(remaining)
+            sub_solution = solve_remaining_greedy(remaining, current_sort_func)
             current_solution.extend(sub_solution)
         
         total_packed_count = sum([len(t.items) for t in current_solution])
@@ -340,33 +331,40 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
         best_solution.sort(key=lambda t: t.max_weight)
         for idx, t in enumerate(best_solution):
             
+            # --- Step 2: 재배치 (Restacking) ---
             items_in_truck = t.items[:] 
             t.items = []
             t.pivots = [[0.0, 0.0, 0.0]]
             t.total_weight = 0.0
             
-            # 길이 기준 내림차순 정렬 후 그룹핑
-            items_in_truck.sort(key=lambda x: x.d, reverse=True)
-            
-            final_load_order = []
-            for k, g in groupby(items_in_truck, key=lambda x: round(x.d / 500)):
-                group_list = list(g)
-                # 그룹 내 King of the Hill 정렬
-                mounded_group = mound_sort_by_height(group_list)
-                final_load_order.extend(mounded_group)
+            if mode == 'cost':
+                # [Cost Mode] 길이 그룹핑 -> 피라미드 -> 줄 스왑 (예쁜 모양, 밸런스)
+                items_in_truck.sort(key=lambda x: x.d, reverse=True)
+                final_load_order = []
+                for k, g in groupby(items_in_truck, key=lambda x: round(x.d / 500)):
+                    group_list = list(g)
+                    mounded_group = mound_sort_by_height(group_list)
+                    final_load_order.extend(mounded_group)
                 
-            for item in final_load_order:
-                if item is None: continue
-                retry_box = Box(item.name, item.w, item.h, item.d, item.weight)
-                retry_box.is_heavy = item.is_heavy
-                t.put_item(retry_box)
+                for item in final_load_order:
+                    if item is None: continue
+                    retry_box = Box(item.name, item.w, item.h, item.d, item.weight)
+                    retry_box.is_heavy = item.is_heavy
+                    t.put_item(retry_box)
+                
+                optimize_row_placement(t) # 줄 스왑 적용
 
-            # [추가] 줄 단위 Swap (높은 줄 안쪽으로)
-            optimize_row_placement(t)
-            
-            # 중앙 정렬
+            else: # mode == 'safety'
+                # [Safety Mode] 무거운 것부터 단순 적재 (Top-Heavy 방지 최우선)
+                # 피라미드나 스왑 없이, 오직 무게/면적 순으로 바닥부터 채움
+                reordered_items = sort_safety_mode(items_in_truck)
+                for item in reordered_items:
+                    retry_box = Box(item.name, item.w, item.h, item.d, item.weight)
+                    retry_box.is_heavy = item.is_heavy
+                    t.put_item(retry_box)
+
+            # 공통: 중앙 정렬
             recenter_truck_items(t)
-            
             t.name = f"{t.name} (#{idx+1})"
             final_trucks.append(t)
             
@@ -478,6 +476,15 @@ st.sidebar.divider()
 st.sidebar.subheader("⚙️ 적재 옵션 설정")
 st.sidebar.info("비용이 비싸게 나온다면 '높이 제한'을 늘리고 '간격'을 해제해보세요.")
 
+# [신규] 모드 선택 옵션
+opt_mode = st.sidebar.radio(
+    "적재 우선순위 모드",
+    options=["비용 절감 (차량 수 최소화)", "안전 우선 (무거운 짐 바닥에)"],
+    index=0,
+    on_change=clear_result
+)
+mode_key = 'cost' if "비용" in opt_mode else 'safety'
+
 opt_height_str = st.sidebar.radio("적재 높이 제한", options=["1200mm", "1300mm", "1400mm"], index=0, horizontal=True, on_change=clear_result)
 opt_height = int(opt_height_str.replace("mm", ""))
 
@@ -515,8 +522,8 @@ if uploaded_file:
         for col in ['적재폭 (mm)', '적재길이 (mm)', '허용하중 (kg)', '운송단가 (원)']: df_truck[col] = df_truck[col].apply(lambda x: f"{x:,.0f}")
         st.dataframe(df_truck, use_container_width=True, hide_index=True, column_config={c: st.column_config.Column(width="medium") for c in df_truck.columns})
 
-        if st.button("최적 배차 실행 (최소비용)", type="primary"):
-            with st.status("🚀 최적의 차량 조합을 분석 중입니다... (잠시만 기다려주세요)", expanded=True) as status:
+        if st.button("최적 배차 실행", type="primary"):
+            with st.status(f"🚀 {opt_mode} 모드로 분석 중입니다...", expanded=True) as status:
                 st.write("1. 데이터를 읽고 변환하고 있습니다...")
                 time.sleep(0.1) 
                 items = load_data(df)
@@ -526,7 +533,7 @@ if uploaded_file:
                 else:
                     st.write("2. 최적화 엔진 가동 중... (물량에 따라 시간이 소요됩니다)")
                     time.sleep(0.1) 
-                    trucks = run_optimization(items, opt_height, gap_mm, opt_level)
+                    trucks = run_optimization(items, opt_height, gap_mm, opt_level, mode=mode_key)
                     st.write("3. 결과 집계 및 시각화 준비 중...")
                     st.session_state['optimized_result'] = trucks
                     st.session_state['calc_opt_height'] = opt_height
