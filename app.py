@@ -7,6 +7,7 @@ import uuid
 import time
 from itertools import groupby
 from io import BytesIO
+from collections import deque # [추가] 정교한 정렬을 위한 라이브러리
 
 # PDF 라이브러리 체크
 try:
@@ -54,7 +55,6 @@ class Truck:
         BOX_GAP_L = self.gap_mm
         if self.total_weight + item.weight > self.max_weight: return False
         
-        # [규칙] 안전 우선: 왼쪽 벽면부터 채우기
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
         
         best_pivot = None
@@ -178,22 +178,64 @@ def load_data(df):
 def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
     MARGIN_LENGTH = 200 
 
+    # [배차용] 길이 우선 정렬 (Test #2 효율 유지)
     def sort_by_length_priority(items):
         return sorted(items, key=lambda x: (x.d, x.w, x.weight), reverse=True)
 
+    # [재적재용] 중앙 집중형 피라미드 정렬 (개선됨)
     def mound_sort_by_height(items):
-        s_items = sorted(items, key=lambda x: (x.h, x.area), reverse=False)
-        result = [None] * len(s_items)
-        left = 0
-        right = len(s_items) - 1
+        # 1. 높이 > 면적 > 무게 순으로 내림차순 정렬
+        s_items = sorted(items, key=lambda x: (x.h, x.area, x.weight), reverse=True)
+        # 2. 가장 큰 것을 중앙에 놓고, 나머지를 좌우로 번갈아 배치 (Deque 사용)
+        dq = deque()
         for i, item in enumerate(s_items):
-            if i % 2 == 0: 
-                result[left] = item
-                left += 1
-            else: 
-                result[right] = item
-                right -= 1
-        return result
+            if i % 2 == 0: dq.append(item)      # 오른쪽
+            else: dq.appendleft(item)           # 왼쪽
+        return list(dq)
+
+    # [신규] 줄 단위 높이 최적화 (높은 줄을 안쪽으로)
+    def optimize_row_placement(truck):
+        if not truck.items: return
+        
+        # 1. Y축(깊이) 기준으로 줄(Row) 나누기 (50cm 오차 허용)
+        items_by_row = []
+        sorted_items = sorted(truck.items, key=lambda x: x.y)
+        
+        current_row = []
+        if sorted_items:
+            current_row_y = sorted_items[0].y
+            for item in sorted_items:
+                if abs(item.y - current_row_y) > 500: # 새로운 줄 시작
+                    items_by_row.append(current_row)
+                    current_row = [item]
+                    current_row_y = item.y
+                else:
+                    current_row.append(item)
+            items_by_row.append(current_row)
+        
+        if len(items_by_row) < 2: return 
+
+        # 2. 각 줄의 대표 높이(최대 높이) 계산
+        row_heights = []
+        for row in items_by_row:
+            max_h = max(item.h for item in row)
+            row_heights.append({'max_h': max_h, 'items': row, 'original_y': row[0].y})
+        
+        # 3. 높이 기준 내림차순 정렬 (높은 줄이 리스트 앞쪽=트럭 안쪽)
+        row_heights.sort(key=lambda x: x['max_h'], reverse=True)
+        
+        # 4. 위치 스왑 (좌표 재할당)
+        target_y_positions = sorted([r['original_y'] for r in row_heights])
+        
+        new_items = []
+        for i, row_data in enumerate(row_heights):
+            y_diff = target_y_positions[i] - row_data['original_y']
+            for item in row_data['items']:
+                item.y += y_diff
+                new_items.append(item)
+        
+        truck.items = new_items
+        truck.pivots = [] # 피벗 초기화 (시각화엔 영향 없음)
 
     def recenter_truck_items(truck):
         if not truck.items: return
@@ -220,7 +262,9 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
                 spec = TRUCK_DB[t_name]
                 if total_rem_weight > 10000 and spec['weight'] < 3500: continue
                 candidates.append((t_name, spec))
-            rem = sort_by_length_priority(rem)
+            
+            rem = sort_by_length_priority(rem) # 배차는 길이 우선 (효율성)
+
             for t_name, spec in candidates:
                 t = Truck(t_name, spec['w'], limit_h, spec['l'] - MARGIN_LENGTH, spec['weight'], spec['cost'], gap_mm, limit_level_on)
                 count = 0; w_sum = 0
@@ -248,6 +292,8 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
     best_solution = None
     min_total_cost = float('inf')
     total_all_weight = sum(i.weight for i in all_items)
+    
+    # [Step 1] 최적 배차 계산 (길이 우선)
     sorted_all_items = sort_by_length_priority(all_items)
     
     for start_truck_name in TRUCK_DB:
@@ -276,28 +322,37 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
     if best_solution:
         best_solution.sort(key=lambda t: t.max_weight)
         for idx, t in enumerate(best_solution):
+            
+            # [Step 2] 확정된 차량 내 재적재 (Restacking)
             items_in_truck = t.items[:] 
             t.items = []
             t.pivots = [[0.0, 0.0, 0.0]]
             t.total_weight = 0.0
             
-            # [수정] 그룹핑 허용 범위 확대 (200 -> 500)
-            # 비슷한 길이(50cm 차이 이내)는 같은 줄로 묶어서 처리 -> V자 현상 방지
+            # 1. 길이(Depth) 기준 내림차순 정렬 후 그룹핑
             items_in_truck.sort(key=lambda x: x.d, reverse=True)
             
             final_load_order = []
+            # 50cm 오차 내에서 같은 줄로 묶기
             for k, g in groupby(items_in_truck, key=lambda x: round(x.d / 500)):
                 group_list = list(g)
+                # 그룹 내에서 'King of the Hill' 피라미드 정렬
                 mounded_group = mound_sort_by_height(group_list)
                 final_load_order.extend(mounded_group)
-                
+            
+            # 2. 순서대로 적재
             for item in final_load_order:
                 if item is None: continue
                 retry_box = Box(item.name, item.w, item.h, item.d, item.weight)
                 retry_box.is_heavy = item.is_heavy
                 t.put_item(retry_box)
 
+            # 3. [신규] 줄 단위 Swap (높은 줄을 안쪽으로, 낮은 줄을 바깥으로)
+            optimize_row_placement(t)
+
+            # 4. 중앙 정렬
             recenter_truck_items(t)
+            
             t.name = f"{t.name} (#{idx+1})"
             final_trucks.append(t)
             
@@ -376,6 +431,7 @@ def draw_truck_3d(truck, limit_count=None):
 
     draw_arrow_dim([0, -OFFSET, 0], [W, -OFFSET, 0], f"폭 : {int(W)}")
     draw_arrow_dim([-OFFSET, 0, 0], [-OFFSET, L, 0], f"길이 : {int(L)}")
+    
     draw_arrow_dim([-OFFSET, L, 0], [-OFFSET, L, LIMIT_H], f"높이제한 : {int(LIMIT_H)}", color='red')
     fig.add_trace(go.Scatter3d(x=[0, W, W, 0, 0], y=[0, 0, L, L, 0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False, hoverinfo='skip'))
 
