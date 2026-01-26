@@ -777,7 +777,8 @@ if uploaded_file:
                             q_rear_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d) / box_area)
                         total_w = t.total_weight if t.total_weight > 0 else 1
 
-                        c1, c2, c3 = st.columns([1, 1, 1.2])
+                        # [수정] 상단 카드 3개 가로 비율 균등하게 (1:1:1)
+                        c1, c2, c3 = st.columns([1, 1, 1])
                         
                         with c1:
                             st.markdown(f"""
@@ -794,16 +795,17 @@ if uploaded_file:
                         with c2:
                             vol_w = vol_pct * 100
                             wgt_w = weight_pct * 100
+                            # [수정] 적재율 숫자 텍스트 색상을 검정(#000000)으로 변경
                             st.markdown(f"""
                             <div class="dashboard-card">
                                 <span class="card-title">📉 적재율</span>
                                 <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
                                     <div class="custom-progress-container">
-                                        <div class="progress-label"><span>체적</span><span style="font-weight:bold;">{vol_w:.1f}%</span></div>
+                                        <div class="progress-label"><span>체적</span><span style="font-weight:bold; color:#000000;">{vol_w:.1f}%</span></div>
                                         <div class="progress-bg"><div class="progress-fill" style="width: {vol_w}%; background-color: #FF4B4B;"></div></div>
                                     </div>
                                     <div class="custom-progress-container">
-                                        <div class="progress-label"><span>중량</span><span style="font-weight:bold;">{wgt_w:.1f}%</span></div>
+                                        <div class="progress-label"><span>중량</span><span style="font-weight:bold; color:#000000;">{wgt_w:.1f}%</span></div>
                                         <div class="progress-bg"><div class="progress-fill" style="width: {wgt_w}%; background-color: #FF4B4B;"></div></div>
                                     </div>
                                 </div>
@@ -833,6 +835,7 @@ if uploaded_file:
 
                         st.write("") 
 
+                        # [수정] 하단 리스트:차트 비율을 1:2로 유지하여 리스트가 상단 1개 카드 너비와 일치하도록 배치
                         c_list, c_chart = st.columns([1, 2]) 
                         
                         with c_list:
@@ -861,11 +864,7 @@ if uploaded_file:
                                 buffer.seek(0)
                                 st.download_button("📄 PDF 다운로드", buffer, f"{t.name}.pdf", "application/pdf", key=f"pdf_{i}")
                             
-                            with st.expander("📦 상세 적재 리스트 (펼치기)", expanded=False):
-                                # ==========================================
-                                # [수정] 박스명->박스번호, 정렬, 가운데정렬, 적재순서
-                                # ==========================================
-                                
+                            with st.expander("📦 상세 적재 리스트 (펼치기)", expanded=True): # 펼치기 기본값 True로 변경 (보기 편하게)
                                 # 1. 적재 순서 문자열 생성 (적재된 순서대로 이름 추출)
                                 loading_order_names = [b.name for b in t.items]
                                 loading_str = " -> ".join(loading_order_names)
@@ -883,7 +882,7 @@ if uploaded_file:
                                     level_str = f"{b.level}단"
 
                                     row_data_list.append({
-                                        "박스번호": b.name,  # [수정] 박스번호로 변경, No 제거
+                                        "박스번호": b.name,
                                         "크기": f"{int(b.w)}x{int(b.d)}x{int(b.h)}", 
                                         "무게": int(b.weight),
                                         "적재단수": level_str,
@@ -892,22 +891,18 @@ if uploaded_file:
 
                                 detail_df = pd.DataFrame(row_data_list)
 
-                                # [수정] 박스번호 기준 정렬 (숫자 우선 처리)
-                                # 숫자로 변환 가능한 것은 숫자로, 아니면 무한대로 보내서 문자열로 정렬
+                                # 박스번호 기준 정렬 (숫자 우선 처리)
                                 detail_df['sort_key'] = pd.to_numeric(detail_df['박스번호'], errors='coerce').fillna(float('inf'))
-                                
-                                # sort_key(숫자) 기준 정렬 -> 같거나 inf면 박스번호(문자) 기준 정렬
                                 detail_df = detail_df.sort_values(by=['sort_key', '박스번호'])
                                 detail_df = detail_df.drop(columns=['sort_key'])
 
-                                # [수정] 가운데 정렬 스타일 적용
+                                # 가운데 정렬 스타일 적용
                                 styled_df = detail_df.style.set_properties(**{'text-align': 'center'}).set_table_styles([
                                     {'selector': 'th', 'props': [('text-align', 'center')]}
                                 ])
                                 
                                 st.dataframe(styled_df, hide_index=True, use_container_width=True, height=400)
                                 
-                                # [수정] 하단 적재 순서 표기
                                 st.info(f"**🚛 적재 순서:** {loading_str}")
 
                         with c_chart:
