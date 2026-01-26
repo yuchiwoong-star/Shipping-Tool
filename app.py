@@ -813,22 +813,43 @@ if uploaded_file:
                             """, unsafe_allow_html=True)
 
                         with c3:
-                            def get_color(val):
-                                return "#FF0000" if val > 33 else "#000000"
-                            
                             p_fl = q_front_left/total_w*100
                             p_fr = q_front_right/total_w*100
                             p_rl = q_rear_left/total_w*100
                             p_rr = q_rear_right/total_w*100
 
+                            # [수정] Risk 기반 경고 로직 적용
+                            c_fl = c_fr = c_rl = c_rr = "#000000" # 기본 검정
+
+                            # 1. 좌우 밸런스 (20% 이상 차이 시 위험)
+                            left_sum = p_fl + p_rl
+                            right_sum = p_fr + p_rr
+                            if abs(left_sum - right_sum) >= 20:
+                                if left_sum > right_sum:
+                                    c_fl = c_rl = "#FF0000" # 좌측 경고
+                                else:
+                                    c_fr = c_rr = "#FF0000" # 우측 경고
+
+                            # 2. 전후 밸런스 (뒤쪽 75% 초과 or 앞쪽 20% 미만 시 뒤쪽 위험)
+                            front_sum = p_fl + p_fr
+                            rear_sum = p_rl + p_rr
+                            if rear_sum > 75 or front_sum < 20:
+                                c_rl = c_rr = "#FF0000" # 뒤쪽 경고
+
+                            # 3. 포인트 하중 (한 분면 40% 초과)
+                            if p_fl > 40: c_fl = "#FF0000"
+                            if p_fr > 40: c_fr = "#FF0000"
+                            if p_rl > 40: c_rl = "#FF0000"
+                            if p_rr > 40: c_rr = "#FF0000"
+
                             st.markdown(f"""
                             <div class="dashboard-card">
                                 <span class="card-title">⚖️ 무게 분포</span>
                                 <div class="quadrant-box">
-                                    <div class="q-cell">앞-좌<br><span style="font-weight:bold; color:{get_color(p_fl)};">{p_fl:.0f}%</span></div>
-                                    <div class="q-cell">앞-우<br><span style="font-weight:bold; color:{get_color(p_fr)};">{p_fr:.0f}%</span></div>
-                                    <div class="q-cell">뒤-좌<br><span style="font-weight:bold; color:{get_color(p_rl)};">{p_rl:.0f}%</span></div>
-                                    <div class="q-cell">뒤-우<br><span style="font-weight:bold; color:{get_color(p_rr)};">{p_rr:.0f}%</span></div>
+                                    <div class="q-cell">앞-좌<br><span style="font-weight:bold; color:{c_fl};">{p_fl:.0f}%</span></div>
+                                    <div class="q-cell">앞-우<br><span style="font-weight:bold; color:{c_fr};">{p_fr:.0f}%</span></div>
+                                    <div class="q-cell">뒤-좌<br><span style="font-weight:bold; color:{c_rl};">{p_rl:.0f}%</span></div>
+                                    <div class="q-cell">뒤-우<br><span style="font-weight:bold; color:{c_rr};">{p_rr:.0f}%</span></div>
                                 </div>
                             </div>
                             """, unsafe_allow_html=True)
