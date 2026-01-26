@@ -551,7 +551,6 @@ def draw_truck_3d(truck, limit_count=None):
 
     draw_arrow_dim([0, -OFFSET, 0], [W, -OFFSET, 0], f"폭 : {int(W)}")
     draw_arrow_dim([-OFFSET, 0, 0], [-OFFSET, L, 0], f"길이 : {int(L)}")
-    
     draw_arrow_dim([-OFFSET, L, 0], [-OFFSET, L, LIMIT_H], f"높이제한 : {int(LIMIT_H)}", color='red')
     fig.add_trace(go.Scatter3d(x=[0, W, W, 0, 0], y=[0, 0, L, L, 0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False, hoverinfo='skip'))
 
@@ -634,14 +633,6 @@ if uploaded_file:
                 st.write("1. 데이터를 읽고 변환하고 있습니다...")
                 time.sleep(0.1) 
                 
-                with st.expander("📜 분석 History", expanded=False):
-                    st.write("- 데이터 로드 및 전처리 완료")
-                    st.write(f"- 선택 모드: {opt_mode}")
-                    st.write("- 시뮬레이션 엔진 가동...")
-                    st.write("- 차량별 적재 가능성 탐색 중...")
-                    st.write("- 최적 배치 알고리즘 수행...")
-                    st.write("- 결과 집계 및 시각화 생성 중...")
-                
                 items = load_data(df)
                 if not items:
                     st.error("데이터 변환 실패.")
@@ -663,6 +654,20 @@ if uploaded_file:
                     <p class="highlight-text">✅ 배차 분석 완료! 아래 결과를 확인하세요.</p>
                 </div>
             """, unsafe_allow_html=True)
+            
+            # [History Expander 위치 변경] 완료 메시지 바로 아래
+            with st.expander("📜 분석 History (Click to view details)"):
+                st.write(f"- [System] 데이터 파일 로드 완료 ({len(df)}건)")
+                st.write(f"- [User] 선택 모드: {opt_mode}")
+                st.write("- [Process] 1톤 ~ 25톤 트럭 시뮬레이션 시작...")
+                st.write("- [Process] 적재 알고리즘 수행 (Greedy Strategy)")
+                st.write("- [Optimization] 1차 최적화 완료")
+                if mode_key == 'length':
+                    st.write("- [Optimization] 길이 기준 그룹핑 및 피라미드 정렬 수행")
+                else:
+                    st.write("- [Optimization] 밀도 기준 빈틈 채우기 수행")
+                st.write("- [Result] 최종 비용 및 적재량 산출 완료")
+                st.write("- [Result] 배차 최적화 작업 종료.")
 
             if trucks:
                 total_cost = sum(t.cost for t in trucks)
@@ -680,7 +685,6 @@ if uploaded_file:
                     with tab:
                         t = trucks[i]
                         
-                        # 계산 로직
                         truck_limit_vol = t.w * t.d * display_height 
                         used_vol = sum([b.vol for b in t.items])
                         vol_pct = min(1.0, used_vol / truck_limit_vol) if truck_limit_vol > 0 else 0
@@ -705,7 +709,7 @@ if uploaded_file:
                             q_rear_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d) / box_area)
                         total_w = t.total_weight if t.total_weight > 0 else 1
 
-                        # [상단 정보 그리드: 카드형]
+                        # [상단 정보 그리드: 통일된 카드형]
                         c1, c2, c3 = st.columns([1, 1, 1.2])
                         
                         # 1. 요약 정보
@@ -721,7 +725,7 @@ if uploaded_file:
                             </div>
                             """, unsafe_allow_html=True)
                         
-                        # 2. 적재율 (HTML Progress Bar)
+                        # 2. 적재율 (HTML Custom Progress Bar)
                         with c2:
                             vol_w = vol_pct * 100
                             wgt_w = weight_pct * 100
@@ -741,16 +745,16 @@ if uploaded_file:
                             </div>
                             """, unsafe_allow_html=True)
 
-                        # 3. 무게 분포 (2x2 Grid)
+                        # 3. 무게 분포 (2x2 Grid with Cross Line)
                         with c3:
                             st.markdown(f"""
                             <div class="dashboard-card">
                                 <span class="card-title">⚖️ 무게 분포</span>
                                 <div class="quadrant-box">
-                                    <div class="q-cell">앞-좌<br><span style="color:#3b82f6;">{q_front_left/total_w*100:.0f}%</span></div>
-                                    <div class="q-cell">앞-우<br><span style="color:#3b82f6;">{q_front_right/total_w*100:.0f}%</span></div>
-                                    <div class="q-cell">뒤-좌<br><span style="color:#3b82f6;">{q_rear_left/total_w*100:.0f}%</span></div>
-                                    <div class="q-cell">뒤-우<br><span style="color:#3b82f6;">{q_rear_right/total_w*100:.0f}%</span></div>
+                                    <div class="q-cell">FL<br><span style="color:#3b82f6;">{q_front_left/total_w*100:.0f}%</span></div>
+                                    <div class="q-cell">FR<br><span style="color:#3b82f6;">{q_front_right/total_w*100:.0f}%</span></div>
+                                    <div class="q-cell">RL<br><span style="color:#3b82f6;">{q_rear_left/total_w*100:.0f}%</span></div>
+                                    <div class="q-cell">RR<br><span style="color:#3b82f6;">{q_rear_right/total_w*100:.0f}%</span></div>
                                 </div>
                             </div>
                             """, unsafe_allow_html=True)
