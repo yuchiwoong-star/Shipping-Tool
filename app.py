@@ -7,6 +7,7 @@ import uuid
 import time
 from itertools import groupby
 from io import BytesIO
+from collections import deque # [추가] 피라미드 정렬을 위한 데크
 
 # PDF 라이브러리 체크
 try:
@@ -46,13 +47,18 @@ class Truck:
         self.cost = int(cost)
         self.items = []
         self.total_weight = 0.0
+        # 피벗: (x, y, z)
         self.pivots = [[0.0, 0.0, 0.0]]
+        
+        # 옵션 저장
         self.gap_mm = gap_mm
         self.limit_level_on = limit_level_on
 
     def put_item(self, item):
         BOX_GAP_L = self.gap_mm
-        if self.total_weight + item.weight > self.max_weight: return False
+
+        if self.total_weight + item.weight > self.max_weight:
+            return False
         
         # [규칙] 안전 우선: 왼쪽 벽면부터 채우기
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
@@ -62,21 +68,35 @@ class Truck:
 
         for p in self.pivots:
             px, py, pz = p
-            if (px + item.w > self.w) or (py + item.d > self.d) or (pz + item.h > self.h): continue
-            if self._check_collision_fast(item, px, py, pz): continue
             
+            # 1. 경계 검사
+            if (px + item.w > self.w) or (py + item.d > self.d) or (pz + item.h > self.h):
+                continue
+            
+            # 2. 충돌 검사
+            if self._check_collision_fast(item, px, py, pz):
+                continue
+            
+            # 3. 지지 검사
             if pz > 0.001:
-                if not self._check_support_fast(item, px, py, pz): continue
+                if not self._check_support_fast(item, px, py, pz):
+                    continue
+                
                 max_below_level = 0
                 for exist in self.items:
                     if abs((exist.z + exist.h) - pz) < 1.0:
                         if (px < exist.x + exist.w and px + item.w > exist.x and
                             py < exist.y + exist.d and py + item.d > exist.y):
-                            if exist.level > max_below_level: max_below_level = exist.level
+                            if exist.level > max_below_level:
+                                max_below_level = exist.level
                 fit_level = max_below_level + 1
-            else: fit_level = 1
+            else:
+                fit_level = 1
             
-            if self.limit_level_on and fit_level > 4: continue
+            # 4단 적재 제한 옵션 확인
+            if self.limit_level_on and fit_level > 4: 
+                continue
+
             best_pivot = p
             break
         
@@ -85,24 +105,32 @@ class Truck:
             item.level = fit_level
             self.items.append(item)
             self.total_weight += item.weight
+            
             self.pivots.remove(best_pivot)
+            
+            # 새 피벗 생성
             self.pivots.append([item.x + item.w, item.y, item.z])
             self.pivots.append([item.x, item.y + item.d + BOX_GAP_L, item.z])
             self.pivots.append([item.x, item.y, item.z + item.h])
             return True
+            
         return False
 
     def _check_collision_fast(self, item, x, y, z):
         iw, id_, ih = item.w, item.d, item.h
         for exist in self.items:
-            if not (z < exist.z + exist.h and z + ih > exist.z): continue
-            if (x < exist.x + exist.w and x + iw > exist.x and y < exist.y + exist.d and y + id_ > exist.y): return True
+            if not (z < exist.z + exist.h and z + ih > exist.z):
+                continue
+            if (x < exist.x + exist.w and x + iw > exist.x and
+                y < exist.y + exist.d and y + id_ > exist.y):
+                return True
         return False
 
     def _check_support_fast(self, item, x, y, z):
         support_area = 0.0
         item_area = item.w * item.d
         required = item_area * 0.8
+        
         for exist in self.items:
             if abs((exist.z + exist.h) - z) < 1.0:
                 ox = max(0.0, min(x + item.w, exist.x + exist.w) - max(x, exist.x))
@@ -145,6 +173,7 @@ def load_data(df):
     try:
         cols = {c: c for c in df.columns}
         weight_col = next((c for c in df.columns if '중량' in c), None)
+        
         heavy_threshold = float('inf')
         if weight_col:
             weights = pd.to_numeric(df[weight_col], errors='coerce').dropna().tolist()
@@ -165,11 +194,15 @@ def load_data(df):
                 h = float(row[h_col])
                 l = float(row[l_col])
                 weight = float(row[weight_col])
+                
                 box = Box(name, w, h, l, weight)
-                if weight >= heavy_threshold and weight > 0: box.is_heavy = True
+                if weight >= heavy_threshold and weight > 0:
+                    box.is_heavy = True
                 items.append(box)
-            except: continue
-    except: pass
+            except:
+                continue
+    except:
+        pass
     return items
 
 # ==========================================
@@ -181,19 +214,21 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
     def sort_by_length_priority(items):
         return sorted(items, key=lambda x: (x.d, x.w, x.weight), reverse=True)
 
+    # [수정] Deque를 활용한 완벽한 중앙 집중 정렬 (King of the Hill)
     def mound_sort_by_height(items):
-        s_items = sorted(items, key=lambda x: (x.h, x.area), reverse=False)
-        result = [None] * len(s_items)
-        left = 0
-        right = len(s_items) - 1
+        # 1. 가장 높고(h), 크고(area), 무거운(weight) 순서대로 내림차순 정렬
+        s_items = sorted(items, key=lambda x: (x.h, x.area, x.weight), reverse=True)
+        
+        # 2. Deque를 사용해 중앙에서부터 양옆으로 퍼지게 배치
+        # 예: [1등] -> [2등, 1등] -> [2등, 1등, 3등] -> [4등, 2등, 1등, 3등] ...
+        dq = deque()
         for i, item in enumerate(s_items):
-            if i % 2 == 0: 
-                result[left] = item
-                left += 1
-            else: 
-                result[right] = item
-                right -= 1
-        return result
+            if i % 2 == 0:
+                dq.append(item)      # 오른쪽 붙임
+            else:
+                dq.appendleft(item)  # 왼쪽 붙임
+        
+        return list(dq)
 
     def recenter_truck_items(truck):
         if not truck.items: return
@@ -212,15 +247,20 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
         used_trucks = []
         rem = current_items[:]
         total_rem_weight = sum(i.weight for i in rem)
+        
         while rem:
             best_truck = None
             max_eff = -1.0
+            
             candidates = []
             for t_name in TRUCK_DB:
                 spec = TRUCK_DB[t_name]
-                if total_rem_weight > 10000 and spec['weight'] < 3500: continue
+                if total_rem_weight > 10000 and spec['weight'] < 3500:
+                    continue
                 candidates.append((t_name, spec))
+
             rem = sort_by_length_priority(rem)
+
             for t_name, spec in candidates:
                 t = Truck(t_name, spec['w'], limit_h, spec['l'] - MARGIN_LENGTH, spec['weight'], spec['cost'], gap_mm, limit_level_on)
                 count = 0; w_sum = 0
@@ -231,12 +271,14 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
                     if t.put_item(new_box):
                         count += 1; w_sum += item.weight
                         temp_items.append(item)
+                
                 if count > 0:
                     eff = w_sum / spec['cost']
                     load_ratio = w_sum / spec['weight']
                     if load_ratio > 0.8: eff *= 1.2
                     if count == len(rem): eff = (1.0 / spec['cost']) * 10000 
                     if eff > max_eff: max_eff = eff; best_truck = t
+            
             if best_truck:
                 used_trucks.append(best_truck)
                 packed_names = set(i.name for i in best_truck.items)
@@ -248,25 +290,32 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
     best_solution = None
     min_total_cost = float('inf')
     total_all_weight = sum(i.weight for i in all_items)
+    
     sorted_all_items = sort_by_length_priority(all_items)
     
     for start_truck_name in TRUCK_DB:
         spec = TRUCK_DB[start_truck_name]
         if total_all_weight > 15000 and spec['weight'] < 4000: continue
+
         start_truck = Truck(start_truck_name, spec['w'], limit_h, spec['l'] - MARGIN_LENGTH, spec['weight'], spec['cost'], gap_mm, limit_level_on)
         for item in sorted_all_items:
              new_box = Box(item.name, item.w, item.h, item.d, item.weight)
              new_box.is_heavy = item.is_heavy
              start_truck.put_item(new_box)
+        
         if not start_truck.items: continue
+
         packed_names = set(i.name for i in start_truck.items)
         remaining = [i for i in sorted_all_items if i.name not in packed_names]
+        
         current_solution = [start_truck]
         if remaining:
             sub_solution = solve_remaining_greedy(remaining)
             current_solution.extend(sub_solution)
+        
         total_packed_count = sum([len(t.items) for t in current_solution])
         if total_packed_count < len(all_items): continue
+
         current_total_cost = sum(t.cost for t in current_solution)
         if current_total_cost < min_total_cost:
             min_total_cost = current_total_cost
@@ -276,18 +325,20 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
     if best_solution:
         best_solution.sort(key=lambda t: t.max_weight)
         for idx, t in enumerate(best_solution):
+            
             items_in_truck = t.items[:] 
             t.items = []
             t.pivots = [[0.0, 0.0, 0.0]]
             t.total_weight = 0.0
             
-            # [수정] 그룹핑 허용 범위 확대 (200 -> 500)
-            # 비슷한 길이(50cm 차이 이내)는 같은 줄로 묶어서 처리 -> V자 현상 방지
+            # 길이 기준 내림차순 정렬 후 그룹핑
             items_in_truck.sort(key=lambda x: x.d, reverse=True)
             
             final_load_order = []
+            # 500mm 오차 범위 내에서 같은 그룹으로 인식
             for k, g in groupby(items_in_truck, key=lambda x: round(x.d / 500)):
                 group_list = list(g)
+                # 그룹 내에서 'King of the Hill' 피라미드 정렬 수행
                 mounded_group = mound_sort_by_height(group_list)
                 final_load_order.extend(mounded_group)
                 
@@ -311,6 +362,7 @@ def draw_truck_3d(truck, limit_count=None):
     original_name = truck.name.split(' (#')[0] if '(#' in truck.name else truck.name
     spec = TRUCK_DB.get(original_name, TRUCK_DB["5톤"])
     W, L, Real_H = spec['w'], spec['l'], spec['real_h']
+    
     LIMIT_H = truck.h 
     
     light_eff = dict(ambient=0.9, diffuse=0.5, specular=0.1, roughness=0.5)
@@ -376,6 +428,7 @@ def draw_truck_3d(truck, limit_count=None):
 
     draw_arrow_dim([0, -OFFSET, 0], [W, -OFFSET, 0], f"폭 : {int(W)}")
     draw_arrow_dim([-OFFSET, 0, 0], [-OFFSET, L, 0], f"길이 : {int(L)}")
+    
     draw_arrow_dim([-OFFSET, L, 0], [-OFFSET, L, LIMIT_H], f"높이제한 : {int(LIMIT_H)}", color='red')
     fig.add_trace(go.Scatter3d(x=[0, W, W, 0, 0], y=[0, 0, L, L, 0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False, hoverinfo='skip'))
 
@@ -385,7 +438,9 @@ def draw_truck_3d(truck, limit_count=None):
     for item in items_to_draw:
         col = '#FF6B6B' if item.is_heavy else '#FAD7A0'
         hover_text = f"<b>📦 {item.name}</b><br>규격: {int(item.w)}x{int(item.d)}x{int(item.h)}<br>중량: {int(item.weight):,}kg<br>적재단수: {item.level}단"
+        
         draw_cube(item.x, item.y, item.z, item.w, item.d, item.h, col, '#000000', hovertext=hover_text)
+        
         annotations.append(dict(x=item.x + item.w/2, y=item.y + item.d/2, z=item.z + item.h/2, text=f"<b>{item.name}</b>", xanchor="center", yanchor="middle", showarrow=False, font=dict(color="black", size=11), bgcolor="rgba(255,255,255,0.5)"))
 
     eye = dict(x=-1.8, y=-1.8, z=1.2); up = dict(x=0, y=0, z=1)
