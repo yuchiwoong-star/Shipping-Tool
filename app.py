@@ -47,21 +47,16 @@ class Truck:
         self.cost = int(cost)
         self.items = []
         self.total_weight = 0.0
-        # 피벗: (x, y, z) - 빈 공간 좌표 후보군
+        # 피벗: (x, y, z)
         self.pivots = [[0.0, 0.0, 0.0]]
-        
-        # 옵션 저장
         self.gap_mm = gap_mm
         self.limit_level_on = limit_level_on
 
     def put_item(self, item):
         BOX_GAP_L = self.gap_mm
-
-        if self.total_weight + item.weight > self.max_weight:
-            return False
+        if self.total_weight + item.weight > self.max_weight: return False
         
-        # [핵심] 피벗 정렬: Z(바닥) -> Y(안쪽) -> X(왼쪽) 순서로 우선순위
-        # 이 순서가 "빈틈없이 채우기"의 핵심입니다.
+        # [핵심] 피벗 정렬: Z(바닥) -> Y(안쪽) -> X(왼쪽)
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
         
         best_pivot = None
@@ -69,36 +64,21 @@ class Truck:
 
         for p in self.pivots:
             px, py, pz = p
+            if (px + item.w > self.w) or (py + item.d > self.d) or (pz + item.h > self.h): continue
+            if self._check_collision_fast(item, px, py, pz): continue
             
-            # 1. 경계 검사
-            if (px + item.w > self.w) or (py + item.d > self.d) or (pz + item.h > self.h):
-                continue
-            
-            # 2. 충돌 검사
-            if self._check_collision_fast(item, px, py, pz):
-                continue
-            
-            # 3. 지지 검사 (공중부양 방지)
             if pz > 0.001:
-                if not self._check_support_fast(item, px, py, pz):
-                    continue
-                
-                # 레벨(층) 계산
+                if not self._check_support_fast(item, px, py, pz): continue
                 max_below_level = 0
                 for exist in self.items:
                     if abs((exist.z + exist.h) - pz) < 1.0:
                         if (px < exist.x + exist.w and px + item.w > exist.x and
                             py < exist.y + exist.d and py + item.d > exist.y):
-                            if exist.level > max_below_level:
-                                max_below_level = exist.level
+                            if exist.level > max_below_level: max_below_level = exist.level
                 fit_level = max_below_level + 1
-            else:
-                fit_level = 1
+            else: fit_level = 1
             
-            # 4단 적재 제한 옵션 확인
-            if self.limit_level_on and fit_level > 4: 
-                continue
-
+            if self.limit_level_on and fit_level > 4: continue
             best_pivot = p
             break
         
@@ -107,38 +87,26 @@ class Truck:
             item.level = fit_level
             self.items.append(item)
             self.total_weight += item.weight
-            
             self.pivots.remove(best_pivot)
-            
-            # 새 피벗 생성 (박스의 오른쪽, 앞쪽, 위쪽을 새로운 빈 공간으로 등록)
-            self.pivots.append([item.x + item.w, item.y, item.z]) # Right
-            self.pivots.append([item.x, item.y + item.d + BOX_GAP_L, item.z]) # Front (Gap 포함)
-            self.pivots.append([item.x, item.y, item.z + item.h]) # Top
+            self.pivots.append([item.x + item.w, item.y, item.z])
+            self.pivots.append([item.x, item.y + item.d + BOX_GAP_L, item.z])
+            self.pivots.append([item.x, item.y, item.z + item.h])
             return True
-            
         return False
 
     def _check_collision_fast(self, item, x, y, z):
         iw, id_, ih = item.w, item.d, item.h
         for exist in self.items:
-            # Z축이 겹치지 않으면 충돌 아님
-            if not (z < exist.z + exist.h and z + ih > exist.z):
-                continue
-            # X, Y축 겹침 확인
-            if (x < exist.x + exist.w and x + iw > exist.x and
-                y < exist.y + exist.d and y + id_ > exist.y):
-                return True
+            if not (z < exist.z + exist.h and z + ih > exist.z): continue
+            if (x < exist.x + exist.w and x + iw > exist.x and y < exist.y + exist.d and y + id_ > exist.y): return True
         return False
 
     def _check_support_fast(self, item, x, y, z):
         support_area = 0.0
         item_area = item.w * item.d
         required = item_area * 0.8
-        
         for exist in self.items:
-            # 바로 아래층에 있는 박스인지 확인
             if abs((exist.z + exist.h) - z) < 1.0:
-                # 겹치는 면적 계산
                 ox = max(0.0, min(x + item.w, exist.x + exist.w) - max(x, exist.x))
                 oy = max(0.0, min(y + item.d, exist.y + exist.d) - max(y, exist.y))
                 area = ox * oy
@@ -179,7 +147,6 @@ def load_data(df):
     try:
         cols = {c: c for c in df.columns}
         weight_col = next((c for c in df.columns if '중량' in c), None)
-        
         heavy_threshold = float('inf')
         if weight_col:
             weights = pd.to_numeric(df[weight_col], errors='coerce').dropna().tolist()
@@ -200,167 +167,268 @@ def load_data(df):
                 h = float(row[h_col])
                 l = float(row[l_col])
                 weight = float(row[weight_col])
-                
                 box = Box(name, w, h, l, weight)
-                if weight >= heavy_threshold and weight > 0:
-                    box.is_heavy = True
+                if weight >= heavy_threshold and weight > 0: box.is_heavy = True
                 items.append(box)
-            except:
-                continue
-    except:
-        pass
+            except: continue
+    except: pass
     return items
 
 # ==========================================
 # 3. 최적화 알고리즘
 # ==========================================
-def run_optimization(all_items, limit_h, gap_mm, limit_level_on):
+def run_optimization(all_items, limit_h, gap_mm, limit_level_on, mode):
     MARGIN_LENGTH = 200 
 
-    # [1] 정렬 기준: 밀도(Density) 우선
-    # 빈 공간을 없애기 위해 가장 중요한 것은 "큰 덩어리를 먼저 넣고, 작은 것을 채우는 것"입니다.
-    def sort_for_packing(items):
-        # 1순위: 무게 (무거운 것 바닥에)
-        # 2순위: 높이 (같은 층을 평평하게 만들기 위해)
-        # 3순위: 면적 (빈틈 없이 채우기 위해)
-        return sorted(items, key=lambda x: (x.weight, x.h, x.area), reverse=True)
+    # --- 정렬 전략 함수들 ---
+    def sort_length_mode(items):
+        # [길이 우선] 길이 > 폭 > 무게 (Step 1 배차용)
+        return sorted(items, key=lambda x: (x.d, x.w, x.weight), reverse=True)
 
-    # [2] 중앙 정렬 (후처리)
-    # 꽉 채운 후, 전체 덩어리를 중앙으로 이동시킵니다.
+    def sort_area_mode(items):
+        # [바닥면적 우선] 무게 > 면적 > 길이 (Step 1 배차용 & Step 2 재적재용)
+        # 사용자의 요청: "정렬 순서: 무게(Heavy) -> 면적(Large) -> 길이"
+        return sorted(items, key=lambda x: (x.weight, x.area, x.d), reverse=True)
+
+    # --- 재배치용 서브 로직 ---
+    def mound_sort_by_height(items):
+        # 높이 기준 피라미드 (King of the Hill)
+        s_items = sorted(items, key=lambda x: (x.h, x.area), reverse=True)
+        dq = deque()
+        for i, item in enumerate(s_items):
+            if i % 2 == 0: dq.append(item)
+            else: dq.appendleft(item)
+        return list(dq)
+
+    # [재적재] 줄 단위 높이 스왑 (높은 줄을 안쪽으로)
+    def optimize_row_placement(truck):
+        if not truck.items: return
+        items_by_row = []
+        sorted_items = sorted(truck.items, key=lambda x: x.y)
+        
+        current_row = []
+        if sorted_items:
+            current_row_y = sorted_items[0].y
+            for item in sorted_items:
+                if abs(item.y - current_row_y) > 500: # 500mm 오차 내 그룹핑
+                    items_by_row.append(current_row)
+                    current_row = [item]
+                    current_row_y = item.y
+                else:
+                    current_row.append(item)
+            items_by_row.append(current_row)
+        
+        if len(items_by_row) < 2: return 
+
+        row_heights = []
+        for row in items_by_row:
+            max_h = max(item.h for item in row)
+            row_heights.append({'max_h': max_h, 'items': row, 'original_y': row[0].y})
+        
+        # 키 큰 줄을 안쪽(Y가 작은 쪽)으로
+        row_heights.sort(key=lambda x: x['max_h'], reverse=True)
+        target_y_positions = sorted([r['original_y'] for r in row_heights])
+        
+        new_items = []
+        for i, row_data in enumerate(row_heights):
+            y_diff = target_y_positions[i] - row_data['original_y']
+            for item in row_data['items']:
+                item.y += y_diff
+                new_items.append(item)
+        truck.items = new_items
+        truck.pivots = [] 
+
+    # [재적재] 줄 내부 좌우 스왑 (높은 박스 중앙으로)
+    def rearrange_items_in_row(truck):
+        if not truck.items: return
+        items_by_row = []
+        sorted_items = sorted(truck.items, key=lambda x: x.y)
+        current_row = []
+        if sorted_items:
+            current_row_y = sorted_items[0].y
+            for item in sorted_items:
+                if abs(item.y - current_row_y) > 500:
+                    items_by_row.append(current_row)
+                    current_row = [item]
+                    current_row_y = item.y
+                else:
+                    current_row.append(item)
+            items_by_row.append(current_row)
+            
+        final_items = []
+        for row in items_by_row:
+            mounded_row = mound_sort_by_height(row)
+            current_x = 0.0
+            temp = []
+            valid = True
+            for item in mounded_row:
+                if current_x + item.w > truck.w: 
+                    valid = False; break
+                item.x = current_x
+                current_x += item.w
+                temp.append(item)
+            if valid: final_items.extend(temp)
+            else: final_items.extend(row)
+        truck.items = final_items
+
     def recenter_truck_items(truck):
         if not truck.items: return
         min_x = min(item.x for item in truck.items)
         max_x = max(item.x + item.w for item in truck.items)
         load_width = max_x - min_x
-        
         remaining_space = truck.w - load_width
         offset_x = remaining_space / 2.0
-        
         if offset_x <= 0.1: return
-
-        for item in truck.items:
-            item.x += offset_x
-        
-        # 피벗도 같이 이동 (시각화 정확성을 위해)
+        for item in truck.items: item.x += offset_x
         new_pivots = []
-        for p in truck.pivots:
-            new_pivots.append([p[0] + offset_x, p[1], p[2]])
+        for p in truck.pivots: new_pivots.append([p[0] + offset_x, p[1], p[2]])
         truck.pivots = new_pivots
 
-    # [3] 배차 알고리즘 (Greedy)
-    def solve_remaining_greedy(current_items):
+    # --- Step 1: 차량 배차 (Allocation) ---
+    def solve_allocation(items_input, sort_func):
+        # 객체 보호를 위해 정렬된 리스트 사용
+        sorted_items = sort_func(items_input)
+        
         used_trucks = []
-        rem = current_items[:]
-        total_rem_weight = sum(i.weight for i in rem)
         
-        while rem:
-            best_truck = None
-            max_eff = -1.0
+        # 1. 첫차 배차
+        best_start_solution = None
+        min_start_cost = float('inf')
+        
+        # 모든 트럭 종류를 첫 차로 시도
+        total_w = sum(i.weight for i in items_input)
+        
+        for start_truck_name in TRUCK_DB:
+            spec = TRUCK_DB[start_truck_name]
+            if total_w > 15000 and spec['weight'] < 4000: continue
+
+            # 시뮬레이션 시작
+            t1 = Truck(start_truck_name, spec['w'], limit_h, spec['l'] - MARGIN_LENGTH, spec['weight'], spec['cost'], gap_mm, limit_level_on)
+            packed_in_t1 = []
             
-            candidates = []
-            for t_name in TRUCK_DB:
-                spec = TRUCK_DB[t_name]
-                if total_rem_weight > 10000 and spec['weight'] < 3500:
-                    continue
-                candidates.append((t_name, spec))
-
-            # 정렬 적용
-            rem = sort_for_packing(rem)
-
-            for t_name, spec in candidates:
-                t = Truck(t_name, spec['w'], limit_h, spec['l'] - MARGIN_LENGTH, spec['weight'], spec['cost'], gap_mm, limit_level_on)
-                count = 0; w_sum = 0
-                temp_items = []
-                for item in rem:
-                    # 객체 복사 (시뮬레이션 오염 방지)
-                    new_box = Box(item.name, item.w, item.h, item.d, item.weight)
-                    new_box.is_heavy = item.is_heavy
-                    if t.put_item(new_box):
-                        count += 1; w_sum += item.weight
-                        temp_items.append(item)
+            for item in sorted_items:
+                # 새 객체 생성
+                nb = Box(item.name, item.w, item.h, item.d, item.weight)
+                nb.is_heavy = item.is_heavy
+                if t1.put_item(nb):
+                    packed_in_t1.append(item) # 원본 아이템 기록
+            
+            if not t1.items: continue
+            
+            # 남은 물량 처리 (Greedy)
+            packed_names = set(i.name for i in packed_in_t1)
+            rem_items = [i for i in sorted_items if i.name not in packed_names]
+            
+            current_solution = [t1]
+            
+            if rem_items:
+                rem_copy = rem_items[:]
+                while rem_copy:
+                    rem_copy = sort_func(rem_copy) # 잔여물량 재정렬
+                    best_next = None
+                    max_eff = -1.0
+                    
+                    # 다음 트럭 후보군
+                    rem_w = sum(i.weight for i in rem_copy)
+                    for tn in TRUCK_DB:
+                        ts = TRUCK_DB[tn]
+                        if rem_w > 10000 and ts['weight'] < 3500: continue
+                        
+                        t_cand = Truck(tn, ts['w'], limit_h, ts['l'] - MARGIN_LENGTH, ts['weight'], ts['cost'], gap_mm, limit_level_on)
+                        count = 0; w_sum = 0
+                        for ri in rem_copy:
+                            nb = Box(ri.name, ri.w, ri.h, ri.d, ri.weight)
+                            nb.is_heavy = ri.is_heavy
+                            if t_cand.put_item(nb):
+                                count += 1; w_sum += nb.weight
+                        
+                        if count > 0:
+                            eff = w_sum / ts['cost']
+                            if (w_sum / ts['weight']) > 0.8: eff *= 1.2
+                            if count == len(rem_copy): eff = (1.0/ts['cost']) * 10000
+                            if eff > max_eff: max_eff = eff; best_next = t_cand
+                    
+                    if best_next:
+                        current_solution.append(best_next)
+                        p_names = set(i.name for i in best_next.items)
+                        rem_copy = [i for i in rem_copy if i.name not in p_names]
+                    else: break
+            
+            # 솔루션 평가
+            total_packed = sum(len(t.items) for t in current_solution)
+            if total_packed < len(items_input): continue
+            
+            cost = sum(t.cost for t in current_solution)
+            if cost < min_start_cost:
+                min_start_cost = cost
+                best_start_solution = current_solution
                 
-                if count > 0:
-                    eff = w_sum / spec['cost']
-                    load_ratio = w_sum / spec['weight']
-                    if load_ratio > 0.8: eff *= 1.2
-                    if count == len(rem): eff = (1.0 / spec['cost']) * 10000 
-                    if eff > max_eff: max_eff = eff; best_truck = t
-            
-            if best_truck:
-                used_trucks.append(best_truck)
-                packed_names = set(i.name for i in best_truck.items)
-                rem = [i for i in rem if i.name not in packed_names]
-                total_rem_weight = sum(i.weight for i in rem)
-            else: break 
-        return used_trucks
+        return best_start_solution
 
-    # 메인 실행 로직
-    best_solution = None
-    min_total_cost = float('inf')
+    # === [메인 실행] 모드에 따른 분기 ===
+    final_solution_trucks = []
     
-    # 전체 아이템도 밀도 우선 정렬
-    sorted_all_items = sort_for_packing(all_items)
-    
-    for start_truck_name in TRUCK_DB:
-        spec = TRUCK_DB[start_truck_name]
-        total_all_weight = sum(i.weight for i in all_items)
-        if total_all_weight > 15000 and spec['weight'] < 4000: continue
+    if mode == 'length':
+        # 🅰️ 길이 우선 모드
+        # 정렬: 길이 -> 폭 -> 무게
+        final_solution_trucks = solve_allocation(all_items, sort_length_mode)
+    else:
+        # 🅱️ 바닥면적 우선 모드
+        # 정렬: 무게 -> 면적 -> 길이
+        final_solution_trucks = solve_allocation(all_items, sort_area_mode)
 
-        start_truck = Truck(start_truck_name, spec['w'], limit_h, spec['l'] - MARGIN_LENGTH, spec['weight'], spec['cost'], gap_mm, limit_level_on)
-        for item in sorted_all_items:
-             new_box = Box(item.name, item.w, item.h, item.d, item.weight)
-             new_box.is_heavy = item.is_heavy
-             start_truck.put_item(new_box)
+    # === [Step 2] 스마트 재적재 (Restacking) ===
+    final_output = []
+    if final_solution_trucks:
+        final_solution_trucks.sort(key=lambda t: t.max_weight)
         
-        if not start_truck.items: continue
-
-        packed_names = set(i.name for i in start_truck.items)
-        remaining = [i for i in sorted_all_items if i.name not in packed_names]
-        
-        current_solution = [start_truck]
-        if remaining:
-            sub_solution = solve_remaining_greedy(remaining)
-            current_solution.extend(sub_solution)
-        
-        total_packed_count = sum([len(t.items) for t in current_solution])
-        if total_packed_count < len(all_items): continue
-
-        current_total_cost = sum(t.cost for t in current_solution)
-        if current_total_cost < min_total_cost:
-            min_total_cost = current_total_cost
-            best_solution = current_solution
-    
-    final_trucks = []
-    if best_solution:
-        best_solution.sort(key=lambda t: t.max_weight)
-        for idx, t in enumerate(best_solution):
-            
-            # [Step 2] 확정된 차량 내 재적재 (Restacking)
-            # 여기서는 인위적인 모양 내기(피라미드 등)를 제거하고
-            # 오직 '빈틈없이 채우기'에 집중합니다.
-            
+        for idx, t in enumerate(final_solution_trucks):
             items_in_truck = t.items[:] 
             t.items = []
             t.pivots = [[0.0, 0.0, 0.0]]
             t.total_weight = 0.0
             
-            # 1. 밀도 우선 정렬 (무게 > 높이 > 면적)
-            reordered_items = sort_for_packing(items_in_truck)
-            
-            # 2. 순서대로 꽉 채워 넣기 (물리 엔진이 알아서 빈 공간 탐색)
-            for item in reordered_items:
-                if item is None: continue
-                retry_box = Box(item.name, item.w, item.h, item.d, item.weight)
-                retry_box.is_heavy = item.is_heavy
-                t.put_item(retry_box)
+            if mode == 'length':
+                # 🅰️ 길이 우선 재적재 규칙
+                # 1. 그룹핑: 길이 500mm 단위
+                items_in_truck.sort(key=lambda x: x.d, reverse=True)
+                final_load_order = []
+                for k, g in groupby(items_in_truck, key=lambda x: round(x.d / 500)):
+                    group_list = list(g)
+                    # 2. 모양: 그룹 내 피라미드 정렬
+                    mounded_group = mound_sort_by_height(group_list)
+                    final_load_order.extend(mounded_group)
+                
+                for item in final_load_order:
+                    if item is None: continue
+                    retry_box = Box(item.name, item.w, item.h, item.d, item.weight)
+                    retry_box.is_heavy = item.is_heavy
+                    t.put_item(retry_box)
+                
+                # 3. 배치: 키 큰 줄을 안쪽으로 스왑
+                optimize_row_placement(t)
 
-            # 3. 전체 덩어리 중앙 정렬
+            else: # mode == 'area'
+                # 🅱️ 바닥면적 우선 재적재 규칙
+                # 1. 채우기: 그룹핑 없이 밀도(면적) 순으로 빈틈없이 채움
+                # 정렬: 무게 -> 면적 -> 길이 (Step 1과 동일)
+                reordered_items = sort_area_mode(items_in_truck)
+                
+                for item in reordered_items:
+                    retry_box = Box(item.name, item.w, item.h, item.d, item.weight)
+                    retry_box.is_heavy = item.is_heavy
+                    t.put_item(retry_box)
+                
+                # 2. 모양: 다 채운 뒤 스왑 (줄 스왑 + 내부 스왑)
+                optimize_row_placement(t)
+                rearrange_items_in_row(t)
+
+            # 공통 후처리: 중앙 정렬
             recenter_truck_items(t)
-
             t.name = f"{t.name} (#{idx+1})"
-            final_trucks.append(t)
+            final_output.append(t)
             
-    return final_trucks
+    return final_output
 
 # ==========================================
 # 4. 시각화
@@ -445,9 +513,7 @@ def draw_truck_3d(truck, limit_count=None):
     for item in items_to_draw:
         col = '#FF6B6B' if item.is_heavy else '#FAD7A0'
         hover_text = f"<b>📦 {item.name}</b><br>규격: {int(item.w)}x{int(item.d)}x{int(item.h)}<br>중량: {int(item.weight):,}kg<br>적재단수: {item.level}단"
-        
         draw_cube(item.x, item.y, item.z, item.w, item.d, item.h, col, '#000000', hovertext=hover_text)
-        
         annotations.append(dict(x=item.x + item.w/2, y=item.y + item.d/2, z=item.z + item.h/2, text=f"<b>{item.name}</b>", xanchor="center", yanchor="middle", showarrow=False, font=dict(color="black", size=11), bgcolor="rgba(255,255,255,0.5)"))
 
     eye = dict(x=-1.8, y=-1.8, z=1.2); up = dict(x=0, y=0, z=1)
@@ -465,28 +531,24 @@ def clear_result():
         del st.session_state['optimized_result']
 
 uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['xlsx', 'csv'])
-
 st.sidebar.divider()
 
 st.sidebar.subheader("⚙️ 적재 옵션 설정")
 st.sidebar.info("비용이 비싸게 나온다면 '높이 제한'을 늘리고 '간격'을 해제해보세요.")
 
-opt_height_str = st.sidebar.radio(
-    "적재 높이 제한", 
-    options=["1200mm", "1300mm", "1400mm"], 
-    index=0, 
-    horizontal=True,
-    on_change=clear_result 
+# [모드 선택 옵션]
+opt_mode = st.sidebar.radio(
+    "적재 모드 선택",
+    options=["🅰️ 길이 우선 (Test #2 추천)", "🅱️ 바닥면적 우선 (Test #0,#1 추천)"],
+    index=0,
+    on_change=clear_result
 )
+mode_key = 'length' if "길이" in opt_mode else 'area'
+
+opt_height_str = st.sidebar.radio("적재 높이 제한", options=["1200mm", "1300mm", "1400mm"], index=0, horizontal=True, on_change=clear_result)
 opt_height = int(opt_height_str.replace("mm", ""))
 
-opt_gap_str = st.sidebar.radio(
-    "박스 간 간격 (길이방향)", 
-    options=["0mm", "100mm", "200mm", "300mm"], 
-    index=2, 
-    horizontal=True,
-    on_change=clear_result 
-)
+opt_gap_str = st.sidebar.radio("박스 간 간격 (길이방향)", options=["0mm", "100mm", "200mm", "300mm"], index=2, horizontal=True, on_change=clear_result)
 gap_mm = int(opt_gap_str.replace("mm", ""))
 
 opt_level = st.sidebar.checkbox("최대 4단 적재 제한", value=True, on_change=clear_result)
@@ -512,7 +574,6 @@ if uploaded_file:
         for col in cols_to_format:
             if col in df_display.columns: df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "")
         if '박스번호' in df_display.columns: df_display['박스번호'] = df_display['박스번호'].astype(str)
-
         st.dataframe(df_display, use_container_width=True, hide_index=True, height=250, column_config={c: st.column_config.Column(width="medium") for c in df_display.columns})
 
         st.subheader("🚛 차량 기준 정보")
@@ -521,12 +582,10 @@ if uploaded_file:
         for col in ['적재폭 (mm)', '적재길이 (mm)', '허용하중 (kg)', '운송단가 (원)']: df_truck[col] = df_truck[col].apply(lambda x: f"{x:,.0f}")
         st.dataframe(df_truck, use_container_width=True, hide_index=True, column_config={c: st.column_config.Column(width="medium") for c in df_truck.columns})
 
-        if st.button("최적 배차 실행 (최소비용)", type="primary"):
-            
-            with st.status("🚀 최적의 차량 조합을 분석 중입니다... (잠시만 기다려주세요)", expanded=True) as status:
+        if st.button("최적 배차 실행", type="primary"):
+            with st.status(f"🚀 {opt_mode} 모드로 분석 중입니다...", expanded=True) as status:
                 st.write("1. 데이터를 읽고 변환하고 있습니다...")
                 time.sleep(0.1) 
-                
                 items = load_data(df)
                 if not items:
                     st.error("데이터 변환 실패.")
@@ -534,14 +593,10 @@ if uploaded_file:
                 else:
                     st.write("2. 최적화 엔진 가동 중... (물량에 따라 시간이 소요됩니다)")
                     time.sleep(0.1) 
-                    
-                    trucks = run_optimization(items, opt_height, gap_mm, opt_level)
-                    
+                    trucks = run_optimization(items, opt_height, gap_mm, opt_level, mode=mode_key)
                     st.write("3. 결과 집계 및 시각화 준비 중...")
-                    
                     st.session_state['optimized_result'] = trucks
                     st.session_state['calc_opt_height'] = opt_height
-                    
                     time.sleep(0.2)
                     status.update(label="배차 분석 완료! 👇 아래 결과를 확인하세요.", state="complete", expanded=False)
         
@@ -551,7 +606,6 @@ if uploaded_file:
 
             if trucks:
                 total_cost = sum(t.cost for t in trucks)
-
                 m1, m2, m3 = st.columns(3)
                 m1.metric("총 배차 차량", f"{len(trucks)}대")
                 m2.metric("총 예상 운송비", f"{total_cost:,}원")
@@ -562,8 +616,6 @@ if uploaded_file:
                 for i, tab in enumerate(tabs):
                     with tab:
                         t = trucks[i]
-                        
-                        # [1] 적재 순서 시뮬레이션 슬라이더
                         total_items = len(t.items)
                         step = st.slider(f"🏗️ 적재 순서 시뮬레이션 (1 ~ {total_items})", 1, total_items, total_items, key=f"slider_{i}")
                         
@@ -577,7 +629,6 @@ if uploaded_file:
                             st.progress(vol_pct, text=f"📏 체적 적재율 ({display_height/1000:.1f}m기준): {vol_pct*100:.1f}%")
                             st.progress(weight_pct, text=f"⚖️ 중량 적재율: {weight_pct*100:.1f}%")
                             
-                            # PDF 다운로드
                             if HAS_REPORTLAB:
                                 buffer = BytesIO()
                                 c = canvas.Canvas(buffer, pagesize=A4)
@@ -619,7 +670,6 @@ if uploaded_file:
                                 b_y1, b_y2 = item.y, item.y + item.d
                                 if item.vol <= 0: continue
                                 box_area = item.w * item.d
-                                
                                 q_front_left += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, 0, mid_y) / box_area)
                                 q_front_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, 0, mid_y) / box_area)
                                 q_rear_left += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, mid_y, t.d) / box_area)
@@ -628,7 +678,6 @@ if uploaded_file:
                             total_w = t.total_weight if t.total_weight > 0 else 1
                             c_q1, c_q2 = st.columns(2)
                             with c_q1: st.metric("앞-좌", f"{q_front_left/total_w*100:.0f}%", f"{int(q_front_left)}kg", delta_color="off")
-                                
                             with c_q2: st.metric("앞-우", f"{q_front_right/total_w*100:.0f}%", f"{int(q_front_right)}kg", delta_color="off")
                             c_q3, c_q4 = st.columns(2)
                             with c_q3: st.metric("뒤-좌", f"{q_rear_left/total_w*100:.0f}%", f"{int(q_rear_left)}kg", delta_color="off")
@@ -640,7 +689,6 @@ if uploaded_file:
                                 st.dataframe([{"박스명": b.name, "단수": f"{b.level}단"} for b in t.items], hide_index=True)
 
                         with c_chart:
-                            # [추가] limit_count 전달
                             st.plotly_chart(draw_truck_3d(t, limit_count=step), use_container_width=True)
             else: st.warning("적재 가능한 차량을 찾지 못했습니다.")
     except Exception as e: st.error(f"오류 발생: {e}")
