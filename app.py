@@ -56,7 +56,6 @@ class Truck:
         BOX_GAP_L = self.gap_mm
         if self.total_weight + item.weight > self.max_weight: return False
         
-        # [핵심] 피벗 정렬: Z(바닥) -> Y(안쪽) -> X(왼쪽)
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
         
         best_pivot = None
@@ -127,25 +126,9 @@ st.markdown("""
         height: 50px; white-space: pre-wrap; background-color: #F0F2F6; border-radius: 5px;
         color: #31333F; font-size: 16px; font-weight: 600; padding: 0px 20px;
     }
-    /* 탭 선택 시 색상 변경 (빨강 -> 초록) */
-    .stTabs [aria-selected="true"] { background-color: #22c55e !important; color: white !important; }
+    /* 탭 선택 시 색상 변경 (빨강 계열 #FF4B4B) */
+    .stTabs [aria-selected="true"] { background-color: #FF4B4B !important; color: white !important; }
     
-    /* 하이라이트 박스 */
-    .highlight-box {
-        background-color: #e6fffa;
-        border: 2px solid #38b2ac;
-        border-radius: 10px;
-        padding: 15px;
-        text-align: center;
-        margin-bottom: 20px;
-    }
-    .highlight-text {
-        color: #234e52;
-        font-size: 20px;
-        font-weight: bold;
-        margin: 0;
-    }
-
     /* 통합 대시보드 카드 스타일 */
     .dashboard-card {
         background-color: #ffffff;
@@ -199,7 +182,7 @@ st.markdown("""
         overflow: hidden;
     }
     .progress-fill {
-        background-color: #3b82f6; /* 파란색으로 통일 */
+        background-color: #3b82f6; /* 파란색 통일 */
         height: 100%;
         border-radius: 10px;
     }
@@ -230,17 +213,17 @@ st.markdown("""
     .q-cell:nth-child(3) { border-right: 1px solid #ddd; border-bottom-left-radius: 5px;}
     .q-cell:nth-child(4) { border-bottom-right-radius: 5px;}
 
-    /* 결과 요약 박스 (통합형 - 텍스트 검정색) */
+    /* 결과 요약 박스 (통합형 - 빨간색 테마 + 검정 글씨) */
     .result-summary-box {
-        background-color: #f0fdf4; 
-        border: 2px solid #22c55e;
+        background-color: #fff5f5; /* 연한 빨강 배경 */
+        border: 2px solid #FF4B4B; /* 진한 빨강 테두리 */
         border-radius: 10px;
         padding: 20px;
         margin-bottom: 20px;
         text-align: center;
     }
     .result-title {
-        color: #000000; /* 검정색 변경 */
+        color: #000000; /* 제목 검정색 */
         font-size: 22px;
         font-weight: bold;
         margin-bottom: 15px;
@@ -259,13 +242,13 @@ st.markdown("""
     }
     .metric-label {
         font-size: 14px;
-        color: #000000; /* 검정색 변경 */
+        color: #000000; /* 라벨 검정색 */
         margin-bottom: 5px;
     }
     .metric-value {
         font-size: 24px;
         font-weight: 800;
-        color: #000000; /* 검정색 변경 */
+        color: #000000; /* 값 검정색 */
     }
 
 </style>
@@ -619,7 +602,7 @@ uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['x
 st.sidebar.divider()
 
 st.sidebar.subheader("⚙️ 적재 옵션 설정")
-st.sidebar.info("비용이 비싸게 나온다면 '높이 제한'을 늘리고 '간격'을 해제해보세요.")
+st.sidebar.info("시뮬레이션 결과가 마음에 들지 않는다면 아래의 옵션들을 변경해서 재 실행해보세요.")
 
 # [모드 선택]
 opt_mode = st.sidebar.radio(
@@ -688,7 +671,7 @@ if uploaded_file:
             trucks = st.session_state['optimized_result']
             display_height = st.session_state.get('calc_opt_height', 1300)
 
-            # 1. 분석 History (맨 위로 이동)
+            # 1. 분석 History
             with st.expander("📜 분석 History (Click to view details)", expanded=False):
                 st.write(f"- [System] 데이터 파일 로드 완료 ({len(df)}건)")
                 st.write(f"- [User] 선택 모드: {opt_mode}")
@@ -707,7 +690,7 @@ if uploaded_file:
                 total_box_count = sum(len(t.items) for t in trucks)
                 total_trucks = len(trucks)
 
-                # 2. 통합 결과 요약 박스 (초록색 + 내부 Metric 통합 + 텍스트 검정색)
+                # 2. 통합 결과 요약 박스 (빨간색 테마 + 검정 글씨)
                 st.markdown(f"""
                 <div class="result-summary-box">
                     <div class="result-title">✅ 배차 분석 완료!</div>
@@ -772,7 +755,7 @@ if uploaded_file:
                                 <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
                                     <div class="summary-row"><span>박스 수량</span><span class="summary-val">{len(t.items)} 개</span></div>
                                     <div class="summary-row"><span>적재 중량</span><span class="summary-val">{t.total_weight:,.0f} kg</span></div>
-                                    <div class="summary-row"><span>운송 비용</span><span class="summary-val" style="color:#e53e3e;">{t.cost:,} 원</span></div>
+                                    <div class="summary-row"><span>운송 비용</span><span class="summary-val" style="color:#000000;">{t.cost:,} 원</span></div>
                                 </div>
                             </div>
                             """, unsafe_allow_html=True)
