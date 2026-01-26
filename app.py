@@ -47,6 +47,7 @@ class Truck:
         self.cost = int(cost)
         self.items = []
         self.total_weight = 0.0
+        # 피벗: (x, y, z)
         self.pivots = [[0.0, 0.0, 0.0]]
         self.gap_mm = gap_mm
         self.limit_level_on = limit_level_on
@@ -55,6 +56,7 @@ class Truck:
         BOX_GAP_L = self.gap_mm
         if self.total_weight + item.weight > self.max_weight: return False
         
+        # [핵심] 피벗 정렬: Z(바닥) -> Y(안쪽) -> X(왼쪽)
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
         
         best_pivot = None
@@ -464,10 +466,10 @@ def draw_truck_3d(truck, limit_count=None):
 
     draw_arrow_dim([0, -OFFSET, 0], [W, -OFFSET, 0], f"폭 : {int(W)}")
     draw_arrow_dim([-OFFSET, 0, 0], [-OFFSET, L, 0], f"길이 : {int(L)}")
+    
     draw_arrow_dim([-OFFSET, L, 0], [-OFFSET, L, LIMIT_H], f"높이제한 : {int(LIMIT_H)}", color='red')
     fig.add_trace(go.Scatter3d(x=[0, W, W, 0, 0], y=[0, 0, L, L, 0], z=[LIMIT_H]*5, mode='lines', line=dict(color='red', width=4, dash='dash'), showlegend=False, hoverinfo='skip'))
 
-    # 전체 다 그리기 (Limit 없음)
     items_to_draw = truck.items
     
     annotations = []
@@ -595,6 +597,21 @@ if uploaded_file:
                         c_info, c_chart = st.columns([1, 2]) 
                         
                         with c_info:
+                            # 1. 차량별 집계 테이블 (Summary Table)
+                            summary_df = pd.DataFrame({
+                                "항목": ["박스 수", "적재 중량", "운송 비용"],
+                                "값": [f"{len(t.items)}개", f"{t.total_weight:,.0f} kg", f"{t.cost:,} 원"]
+                            })
+                            st.dataframe(summary_df, hide_index=True, use_container_width=True)
+
+                            # 2. 적재 리스트 상세 (Expander)
+                            with st.expander("📦 적재 리스트 확인 (클릭)"):
+                                detail_df = pd.DataFrame([{"No": i+1, "박스명": b.name, "크기": f"{int(b.w)}x{int(b.d)}x{int(b.h)}", "무게": int(b.weight)} for i, b in enumerate(t.items)])
+                                st.dataframe(detail_df, hide_index=True, use_container_width=True)
+
+                            st.divider()
+
+                            # 3. 적재율 그래프 (Progress Bars)
                             truck_limit_vol = t.w * t.d * display_height 
                             used_vol = sum([b.vol for b in t.items])
                             vol_pct = min(1.0, used_vol / truck_limit_vol) if truck_limit_vol > 0 else 0
@@ -603,7 +620,40 @@ if uploaded_file:
                             st.progress(vol_pct, text=f"📏 체적 적재율 ({display_height/1000:.1f}m기준): {vol_pct*100:.1f}%")
                             st.progress(weight_pct, text=f"⚖️ 중량 적재율: {weight_pct*100:.1f}%")
                             
-                            # PDF 다운로드
+                            st.divider()
+
+                            # 4. 하중 분포 (Weight Distribution)
+                            mid_y = t.d / 2; mid_x = t.w / 2  
+                            q_front_left = q_front_right = q_rear_left = q_rear_right = 0.0
+                            
+                            def calc_overlap(b_x1, b_x2, b_y1, b_y2, q_x1, q_x2, q_y1, q_y2):
+                                x_overlap = max(0, min(b_x2, q_x2) - max(b_x1, q_x1))
+                                y_overlap = max(0, min(b_y2, q_y2) - max(b_y1, q_y1))
+                                return x_overlap * y_overlap
+
+                            for item in t.items:
+                                b_x1, b_x2 = item.x, item.x + item.w
+                                b_y1, b_y2 = item.y, item.y + item.d
+                                if item.vol <= 0: continue
+                                box_area = item.w * item.d
+                                q_front_left += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, 0, mid_y) / box_area)
+                                q_front_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, 0, mid_y) / box_area)
+                                q_rear_left += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, mid_y, t.d) / box_area)
+                                q_rear_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d) / box_area)
+                            
+                            total_w = t.total_weight if t.total_weight > 0 else 1
+                            
+                            st.markdown("##### ⚖️ 무게 분포 (4분면)")
+                            c_q1, c_q2 = st.columns(2)
+                            with c_q1: st.metric("앞-좌", f"{q_front_left/total_w*100:.0f}%", f"{int(q_front_left)}kg", delta_color="off")
+                            with c_q2: st.metric("앞-우", f"{q_front_right/total_w*100:.0f}%", f"{int(q_front_right)}kg", delta_color="off")
+                            c_q3, c_q4 = st.columns(2)
+                            with c_q3: st.metric("뒤-좌", f"{q_rear_left/total_w*100:.0f}%", f"{int(q_rear_left)}kg", delta_color="off")
+                            with c_q4: st.metric("뒤-우", f"{q_rear_right/total_w*100:.0f}%", f"{int(q_rear_right)}kg", delta_color="off")
+
+                            st.divider()
+
+                            # 5. PDF 다운로드
                             if HAS_REPORTLAB:
                                 buffer = BytesIO()
                                 c = canvas.Canvas(buffer, pagesize=A4)
@@ -628,16 +678,6 @@ if uploaded_file:
                                 c.save()
                                 buffer.seek(0)
                                 st.download_button("📄 PDF 다운로드", buffer, f"{t.name}.pdf", "application/pdf", key=f"pdf_{i}")
-
-                            st.divider()
-                            st.markdown("##### 📦 적재 리스트")
-                            # Expander 없이 바로 데이터프레임 노출
-                            st.dataframe(
-                                [{"No": i+1, "박스명": b.name, "크기": f"{int(b.w)}x{int(b.d)}x{int(b.h)}", "무게": int(b.weight)} for i, b in enumerate(t.items)], 
-                                hide_index=True, 
-                                use_container_width=True,
-                                height=400 
-                            )
 
                         with c_chart:
                             # limit_count 없이 전체 그리기
