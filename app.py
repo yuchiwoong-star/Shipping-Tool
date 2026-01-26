@@ -56,6 +56,7 @@ class Truck:
         BOX_GAP_L = self.gap_mm
         if self.total_weight + item.weight > self.max_weight: return False
         
+        # [핵심] 피벗 정렬: Z(바닥) -> Y(안쪽) -> X(왼쪽)
         self.pivots.sort(key=lambda p: (p[2], p[1], p[0]))
         
         best_pivot = None
@@ -126,8 +127,25 @@ st.markdown("""
         height: 50px; white-space: pre-wrap; background-color: #F0F2F6; border-radius: 5px;
         color: #31333F; font-size: 16px; font-weight: 600; padding: 0px 20px;
     }
-    .stTabs [aria-selected="true"] { background-color: #FF4B4B !important; color: white !important; }
+    /* 탭 선택 시 색상 변경 (빨강 -> 초록) */
+    .stTabs [aria-selected="true"] { background-color: #22c55e !important; color: white !important; }
     
+    /* 하이라이트 박스 */
+    .highlight-box {
+        background-color: #e6fffa;
+        border: 2px solid #38b2ac;
+        border-radius: 10px;
+        padding: 15px;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    .highlight-text {
+        color: #234e52;
+        font-size: 20px;
+        font-weight: bold;
+        margin: 0;
+    }
+
     /* 통합 대시보드 카드 스타일 */
     .dashboard-card {
         background-color: #ffffff;
@@ -181,7 +199,7 @@ st.markdown("""
         overflow: hidden;
     }
     .progress-fill {
-        background-color: #ff4b4b;
+        background-color: #3b82f6; /* 파란색으로 통일 */
         height: 100%;
         border-radius: 10px;
     }
@@ -212,17 +230,17 @@ st.markdown("""
     .q-cell:nth-child(3) { border-right: 1px solid #ddd; border-bottom-left-radius: 5px;}
     .q-cell:nth-child(4) { border-bottom-right-radius: 5px;}
 
-    /* 결과 요약 박스 (통합형) */
+    /* 결과 요약 박스 (통합형 - 텍스트 검정색) */
     .result-summary-box {
-        background-color: #f0fdf4; /* 연한 초록 배경 */
-        border: 2px solid #22c55e; /* 진한 초록 테두리 */
+        background-color: #f0fdf4; 
+        border: 2px solid #22c55e;
         border-radius: 10px;
         padding: 20px;
         margin-bottom: 20px;
         text-align: center;
     }
     .result-title {
-        color: #15803d;
+        color: #000000; /* 검정색 변경 */
         font-size: 22px;
         font-weight: bold;
         margin-bottom: 15px;
@@ -241,13 +259,13 @@ st.markdown("""
     }
     .metric-label {
         font-size: 14px;
-        color: #555;
+        color: #000000; /* 검정색 변경 */
         margin-bottom: 5px;
     }
     .metric-value {
         font-size: 24px;
         font-weight: 800;
-        color: #000;
+        color: #000000; /* 검정색 변경 */
     }
 
 </style>
@@ -689,7 +707,7 @@ if uploaded_file:
                 total_box_count = sum(len(t.items) for t in trucks)
                 total_trucks = len(trucks)
 
-                # 2. 통합 결과 요약 박스 (초록색 + 내부 Metric 통합)
+                # 2. 통합 결과 요약 박스 (초록색 + 내부 Metric 통합 + 텍스트 검정색)
                 st.markdown(f"""
                 <div class="result-summary-box">
                     <div class="result-title">✅ 배차 분석 완료!</div>
@@ -700,7 +718,7 @@ if uploaded_file:
                         </div>
                         <div class="metric-item">
                             <span class="metric-label">총 예상 운송비</span>
-                            <span class="metric-value" style="color:#d32f2f;">{total_cost:,}원</span>
+                            <span class="metric-value" style="color:#000000;">{total_cost:,}원</span>
                         </div>
                         <div class="metric-item">
                             <span class="metric-label">총 적재 중량</span>
@@ -743,7 +761,7 @@ if uploaded_file:
                             q_rear_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d) / box_area)
                         total_w = t.total_weight if t.total_weight > 0 else 1
 
-                        # [상단 정보 그리드: 통일된 카드형]
+                        # [상단 정보 그리드: 카드형]
                         c1, c2, c3 = st.columns([1, 1, 1.2])
                         
                         # 1. 요약 정보
@@ -759,7 +777,7 @@ if uploaded_file:
                             </div>
                             """, unsafe_allow_html=True)
                         
-                        # 2. 적재율 (HTML Custom Progress Bar)
+                        # 2. 적재율 (HTML Custom Progress Bar - 파란색 통일)
                         with c2:
                             vol_w = vol_pct * 100
                             wgt_w = weight_pct * 100
@@ -773,7 +791,7 @@ if uploaded_file:
                                     </div>
                                     <div class="custom-progress-container">
                                         <div class="progress-label"><span>중량</span><span>{wgt_w:.1f}%</span></div>
-                                        <div class="progress-bg"><div class="progress-fill" style="width: {wgt_w}%; background-color: #ef4444;"></div></div>
+                                        <div class="progress-bg"><div class="progress-fill" style="width: {wgt_w}%; background-color: #3b82f6;"></div></div>
                                     </div>
                                 </div>
                             </div>
