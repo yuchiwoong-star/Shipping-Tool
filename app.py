@@ -14,7 +14,6 @@ try:
     from reportlab.lib.pagesizes import A4
     from reportlab.pdfgen import canvas
     from reportlab.lib import colors
-    # 한글 폰트 미지원 시 영문으로 대체 (실제 운영 시 폰트 파일 필요)
     HAS_REPORTLAB = True
 except ImportError:
     HAS_REPORTLAB = False
@@ -128,58 +127,147 @@ st.markdown("""
         height: 50px; white-space: pre-wrap; background-color: #F0F2F6; border-radius: 5px;
         color: #31333F; font-size: 16px; font-weight: 600; padding: 0px 20px;
     }
+    /* 탭 선택 시 색상 변경 (빨강 계열 #FF4B4B) */
     .stTabs [aria-selected="true"] { background-color: #FF4B4B !important; color: white !important; }
     
+    /* 하이라이트 박스 */
+    .highlight-box {
+        background-color: #e6fffa;
+        border: 2px solid #38b2ac;
+        border-radius: 10px;
+        padding: 15px;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    .highlight-text {
+        color: #234e52;
+        font-size: 20px;
+        font-weight: bold;
+        margin: 0;
+    }
+
+    /* 통합 대시보드 카드 스타일 */
     .dashboard-card {
-        background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 15px;
-        height: 200px; display: flex; flex-direction: column; justify-content: flex-start;
+        background-color: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 15px;
+        height: 200px;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     .card-title {
-        font-size: 16px; font-weight: 700; color: #333; margin-bottom: 15px;
-        border-bottom: 2px solid #f0f0f0; padding-bottom: 5px;
+        font-size: 16px;
+        font-weight: 700;
+        color: #333;
+        margin-bottom: 15px;
+        border-bottom: 2px solid #f0f0f0;
+        padding-bottom: 5px;
     }
+    
+    /* 요약 정보 텍스트 */
     .summary-row {
-        display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; color: #555;
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        font-size: 14px;
+        color: #555;
     }
-    .summary-val { font-weight: bold; color: #000; }
-    .custom-progress-container { margin-bottom: 12px; }
+    .summary-val {
+        font-weight: bold;
+        color: #000;
+    }
+
+    /* 커스텀 프로그레스 바 */
+    .custom-progress-container {
+        margin-bottom: 12px;
+    }
     .progress-label {
-        font-size: 13px; color: #666; margin-bottom: 3px; display: flex; justify-content: space-between;
+        font-size: 13px;
+        color: #666;
+        margin-bottom: 3px;
+        display: flex;
+        justify-content: space-between;
     }
     .progress-bg {
-        background-color: #eee; border-radius: 10px; height: 12px; width: 100%; overflow: hidden;
+        background-color: #eee;
+        border-radius: 10px;
+        height: 12px;
+        width: 100%;
+        overflow: hidden;
     }
-    .progress-fill { background-color: #FF4B4B; height: 100%; border-radius: 10px; }
-    
+    .progress-fill {
+        background-color: #FF4B4B; /* 빨간색 통일 */
+        height: 100%;
+        border-radius: 10px;
+    }
+
+    /* 4분면 그리드 (2x2) */
     .quadrant-box {
-        display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
-        width: 100%; height: 120px; border: 1px solid #ddd; border-radius: 5px; background-color: #fafafa;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr 1fr;
+        width: 100%;
+        height: 120px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        background-color: #fafafa;
     }
     .q-cell {
-        display: flex; flex-direction: column; justify-content: center; align-items: center;
-        font-size: 13px; font-weight: normal; color: #000000; background-color: white;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        font-size: 13px;
+        font-weight: normal; 
+        color: #000000;
+        background-color: white;
     }
     .q-cell:nth-child(1) { border-right: 1px solid #ddd; border-bottom: 1px solid #ddd; border-top-left-radius: 5px;}
     .q-cell:nth-child(2) { border-bottom: 1px solid #ddd; border-top-right-radius: 5px;}
     .q-cell:nth-child(3) { border-right: 1px solid #ddd; border-bottom-left-radius: 5px;}
     .q-cell:nth-child(4) { border-bottom-right-radius: 5px;}
 
+    /* 결과 요약 박스 (통합형 - 빨간색 테마 + 검정 글씨) */
     .result-summary-box {
-        background-color: #fff5f5; border: 2px solid #FF4B4B; border-radius: 10px;
-        padding: 20px; margin-bottom: 20px; text-align: center;
+        background-color: #fff5f5; /* 연한 빨강 배경 */
+        border: 2px solid #FF4B4B; /* 진한 빨강 테두리 */
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+        text-align: center;
     }
-    .result-title { color: #000000; font-size: 22px; font-weight: bold; margin-bottom: 15px; }
-    .result-metrics { display: flex; justify-content: space-around; flex-wrap: wrap; gap: 10px; }
-    .metric-item { display: flex; flex-direction: column; align-items: center; min-width: 120px; }
-    .metric-label { font-size: 14px; color: #000000; margin-bottom: 5px; }
-    .metric-value { font-size: 24px; font-weight: 800; color: #000000; }
-    
-    .flow-text {
-        font-family: 'Courier New', monospace; background-color: #f8f9fa; padding: 15px;
-        border-radius: 5px; font-size: 14px; color: #333; line-height: 1.6;
-        border-left: 5px solid #FF4B4B; white-space: pre-wrap; word-break: break-all;
+    .result-title {
+        color: #000000; /* 제목 검정색 */
+        font-size: 22px;
+        font-weight: bold;
+        margin-bottom: 15px;
     }
+    .result-metrics {
+        display: flex;
+        justify-content: space-around;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    .metric-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-width: 120px;
+    }
+    .metric-label {
+        font-size: 14px;
+        color: #000000; /* 라벨 검정색 */
+        margin-bottom: 5px;
+    }
+    .metric-value {
+        font-size: 24px;
+        font-weight: 800;
+        color: #000000; /* 값 검정색 */
+    }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -250,6 +338,7 @@ def run_optimization(all_items, limit_h, gap_mm, max_layer_val, mode):
         if not truck.items: return
         items_by_row = []
         sorted_items = sorted(truck.items, key=lambda x: x.y)
+        
         current_row = []
         if sorted_items:
             current_row_y = sorted_items[0].y
@@ -280,6 +369,38 @@ def run_optimization(all_items, limit_h, gap_mm, max_layer_val, mode):
                 new_items.append(item)
         truck.items = new_items
         truck.pivots = [] 
+
+    def rearrange_items_in_row(truck):
+        if not truck.items: return
+        items_by_row = []
+        sorted_items = sorted(truck.items, key=lambda x: x.y)
+        current_row = []
+        if sorted_items:
+            current_row_y = sorted_items[0].y
+            for item in sorted_items:
+                if abs(item.y - current_row_y) > 500:
+                    items_by_row.append(current_row)
+                    current_row = [item]
+                    current_row_y = item.y
+                else:
+                    current_row.append(item)
+            items_by_row.append(current_row)
+            
+        final_items = []
+        for row in items_by_row:
+            mounded_row = mound_sort_by_height(row)
+            current_x = 0.0
+            temp = []
+            valid = True
+            for item in mounded_row:
+                if current_x + item.w > truck.w: 
+                    valid = False; break
+                item.x = current_x
+                current_x += item.w
+                temp.append(item)
+            if valid: final_items.extend(temp)
+            else: final_items.extend(row)
+        truck.items = final_items
 
     def recenter_truck_items(truck):
         if not truck.items: return
@@ -352,6 +473,7 @@ def run_optimization(all_items, limit_h, gap_mm, max_layer_val, mode):
             if cost < min_start_cost:
                 min_start_cost = cost
                 best_start_solution = current_solution
+                
         return best_start_solution
 
     final_solution_trucks = []
@@ -396,9 +518,9 @@ def run_optimization(all_items, limit_h, gap_mm, max_layer_val, mode):
     return final_output
 
 # ==========================================
-# 4. 시각화 (3D 애니메이션 - 함수명 수정됨)
+# 4. 시각화 (3D 애니메이션 적용)
 # ==========================================
-def draw_truck_3d_animated(truck, limit_count=None):
+def draw_truck_3d(truck, limit_count=None):
     fig = go.Figure()
     original_name = truck.name.split(' (#')[0] if '(#' in truck.name else truck.name
     spec = TRUCK_DB.get(original_name, TRUCK_DB["5톤"])
@@ -409,11 +531,11 @@ def draw_truck_3d_animated(truck, limit_count=None):
     COLOR_FRAME = '#555555' 
     COLOR_FRAME_LINE = '#333333'
 
-    # [Helper] 큐브 Trace 생성 함수
+    # [Helper] 큐브 Trace 생성 함수 (리스트 반환)
     def create_cube_trace(x, y, z, w, l, h, face_color, line_color=None, opacity=1.0, hovertext=None, name=None):
         hover_info = 'text' if hovertext else 'skip'
         
-        # 면(Mesh3d) - 3D 객체 사용 필수
+        # 1. 면 (Mesh3d)
         mesh = go.Mesh3d(
             x=[x, x+w, x+w, x, x, x+w, x+w, x],
             y=[y, y, y+l, y+l, y, y, y+l, y+l],
@@ -428,7 +550,7 @@ def draw_truck_3d_animated(truck, limit_count=None):
         
         traces = [mesh]
         
-        # 테두리(Lines) - Scatter3d 사용 필수
+        # 2. 테두리 (Scatter3d Lines)
         if line_color:
             xe=[x,x+w,x+w,x,x,None, x,x+w,x+w,x,x,None, x,x,None, x+w,x+w,None, x+w,x+w,None, x,x]
             ye=[y,y,y+l,y+l,y,None, y,y,y+l,y+l,y,None, y,y,None, y+l,y+l,None, y+l,y+l]
@@ -442,34 +564,48 @@ def draw_truck_3d_animated(truck, limit_count=None):
             
         return traces
 
-    # 1. 고정된 트럭 프레임 그리기
+    # 1. 고정된 트럭 프레임 그리기 (기존 디자인 복원)
     static_traces = []
+    
     ch_h = 100; f_tk = 40; bmp_h = 140; 
     
-    # 트럭 바디 및 프레임
+    # 섀시 및 기둥
     static_traces.extend(create_cube_trace(0, 0, -ch_h, W, L, ch_h, '#AAAAAA', COLOR_FRAME))
     static_traces.extend(create_cube_trace(-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE)) 
     static_traces.extend(create_cube_trace(W-f_tk/2, L-f_tk, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE))
     static_traces.extend(create_cube_trace(-f_tk/2, L-f_tk, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, COLOR_FRAME_LINE))
     static_traces.extend(create_cube_trace(-f_tk/2, L, -ch_h-bmp_h, W+f_tk, f_tk, bmp_h, '#222222')) 
+    
+    # 후미등 (기존 디자인 유지)
+    light_y = L + f_tk; light_z = -ch_h-bmp_h+40 
+    light_w = 60; light_h = 20; light_d = 60; margin_in = 150
+    left_start = -f_tk/2 + margin_in
+    static_traces.extend(create_cube_trace(left_start, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000')) 
+    static_traces.extend(create_cube_trace(left_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600')) 
+    static_traces.extend(create_cube_trace(left_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA')) 
+    right_start = (W + f_tk/2) - margin_in - (light_w * 3)
+    static_traces.extend(create_cube_trace(right_start, light_y, light_z, light_w, light_h, light_d, '#EEEEEE', '#AAAAAA')) 
+    static_traces.extend(create_cube_trace(right_start+light_w, light_y, light_z, light_w, light_h, light_d, '#FFAA00', '#996600')) 
+    static_traces.extend(create_cube_trace(right_start+light_w*2, light_y, light_z, light_w, light_h, light_d, '#FF0000', '#990000')) 
 
-    # 트럭 바닥 (반투명)
+    # 전면 프레임 및 바닥
+    static_traces.extend(create_cube_trace(-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE)) 
+    static_traces.extend(create_cube_trace(W-f_tk/2, 0, -ch_h, f_tk, f_tk, Real_H+ch_h+20, COLOR_FRAME, COLOR_FRAME_LINE)) 
+    static_traces.extend(create_cube_trace(-f_tk/2, 0, Real_H, W+f_tk, f_tk, f_tk, COLOR_FRAME, COLOR_FRAME_LINE)) 
+    static_traces.extend(create_cube_trace(-f_tk/2, 0, Real_H, f_tk, L, f_tk, COLOR_FRAME, COLOR_FRAME_LINE)) 
+    static_traces.extend(create_cube_trace(W-f_tk/2, 0, Real_H, f_tk, L, f_tk, COLOR_FRAME, COLOR_FRAME_LINE)) 
     static_traces.extend(create_cube_trace(0, 0, 0, W, L, Real_H, '#EEF5FF', '#666666', opacity=0.1))
 
-    # 치수선 (Scatter3d 사용)
+    # 치수선
     OFFSET = 800; TEXT_OFFSET = OFFSET * 1.5
     def make_dim_traces(p1, p2, text, color='black'):
         t_list = []
         t_list.append(go.Scatter3d(x=[p1[0], p2[0]], y=[p1[1], p2[1]], z=[p1[2], p2[2]], mode='lines', line=dict(color=color, width=3), showlegend=False, hoverinfo='skip'))
-        
-        # 화살표 머리 (Cone)
         vec = np.array(p2) - np.array(p1); length = np.linalg.norm(vec)
         if length > 0:
             u, v, w = vec / length
             t_list.append(go.Cone(x=[p2[0]], y=[p2[1]], z=[p2[2]], u=[u], v=[v], w=[w], sizemode="absolute", sizeref=150, anchor="tip", showscale=False, colorscale=[[0, color], [1, color]], hoverinfo='skip'))
             t_list.append(go.Cone(x=[p1[0]], y=[p1[1]], z=[p1[2]], u=[-u], v=[-v], w=[-w], sizemode="absolute", sizeref=150, anchor="tip", showscale=False, colorscale=[[0, color], [1, color]], hoverinfo='skip'))
-        
-        # 텍스트
         mid = [(p1[0]+p2[0])/2, (p1[1]+p2[1])/2, (p1[2]+p2[2])/2]
         if text.startswith("폭"): mid[1] = -TEXT_OFFSET; mid[2] = 0
         elif text.startswith("길이"): mid[0] = -TEXT_OFFSET; mid[2] = 0
@@ -495,7 +631,8 @@ def draw_truck_3d_animated(truck, limit_count=None):
         end_idx = len(box_traces)
         box_trace_indices.append(range(start_idx, end_idx))
 
-    # 3. Figure 초기화 및 Trace 추가 (초기 상태: 모두 보임)
+    # 3. Figure 초기화 및 Trace 추가
+    # 초기 상태: 모든 박스 보이기 (완료 상태)
     for t in static_traces: fig.add_trace(t)
     for t in box_traces: fig.add_trace(t)
 
@@ -505,13 +642,13 @@ def draw_truck_3d_animated(truck, limit_count=None):
     # 4. 애니메이션 프레임 생성
     frames = []
     
-    # Frame: Start (빈 트럭)
+    # Frame 0: Start (빈 트럭)
     frames.append(go.Frame(
         data=[dict(visible=True) for _ in range(num_static)] + [dict(visible=False) for _ in range(len(box_traces))],
         name="start"
     ))
 
-    # Frame: Steps (하나씩 쌓기)
+    # Frame 1~N: Steps (하나씩 쌓기)
     for i in range(num_boxes):
         visibility_list = [True] * num_static 
         box_vis_list = []
@@ -533,7 +670,6 @@ def draw_truck_3d_animated(truck, limit_count=None):
             aspectmode='data', 
             xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False), 
             bgcolor='white', 
-            # 카메라 앵글 고정 (3D 뷰 유지)
             camera=dict(eye=dict(x=-1.5, y=-1.5, z=1.5), up=dict(x=0, y=0, z=1))
         ),
         margin=dict(l=0, r=0, b=0, t=0),
@@ -555,13 +691,14 @@ def draw_truck_3d_animated(truck, limit_count=None):
                 args=[[f"step_{k}"], dict(mode="immediate", frame=dict(duration=0, redraw=True))],
                 label=f"{k+1}"
             ) for k in range(num_boxes)],
-            active=num_boxes - 1, # 초기 슬라이더 위치: 끝
+            active=num_boxes - 1, # 초기 슬라이더 위치: 끝 (완료 상태)
             currentvalue=dict(prefix="적재 순서: ", visible=True, xanchor="center"),
             pad=dict(t=50)
         )]
     )
 
     return fig
+
 # ==========================================
 # 5. 메인 UI
 # ==========================================
@@ -577,6 +714,7 @@ st.sidebar.divider()
 st.sidebar.subheader("⚙️ 적재 옵션 설정")
 st.sidebar.info("💡 원하는 배차 결과가 나오지 않았다면, 아래 옵션을 조정하여 재실행해 보세요.")
 
+# [모드 선택]
 opt_mode = st.sidebar.radio(
     "적재 우선순위 모드",
     options=["길이 우선 (긴 화물 / 규격이 일정할 때)", "바닥면적 우선 (크기가 다양한 혼합 화물)"],
@@ -585,6 +723,7 @@ opt_mode = st.sidebar.radio(
 )
 mode_key = 'length' if "길이" in opt_mode else 'area'
 
+# [기본값 1300mm로 변경 (index=1)]
 opt_height_str = st.sidebar.radio("적재 높이 제한", options=["1200mm", "1300mm", "1400mm"], index=1, horizontal=True, on_change=clear_result)
 opt_height = int(opt_height_str.replace("mm", ""))
 
@@ -791,27 +930,6 @@ if uploaded_file:
                         c_list, c_chart = st.columns([1, 2]) 
                         
                         with c_list:
-                            def get_zone_name(item, truck_w, truck_d):
-                                cx = item.x + item.w / 2
-                                cy = item.y + item.d / 2
-                                lr_str = "좌" if cx < truck_w / 2 else "우"
-                                fb_str = "뒤" if cy < truck_d / 2 else "앞"
-                                return f"{fb_str}-{lr_str}"
-
-                            list_data = []
-                            for idx, item in enumerate(t.items):
-                                zone = get_zone_name(item, t.w, t.d)
-                                list_data.append({
-                                    "순서": idx + 1,
-                                    "박스명": item.name,
-                                    "크기": f"{int(item.w)}x{int(item.d)}x{int(item.h)}",
-                                    "무게": f"{int(item.weight)}kg",
-                                    "위치": zone,
-                                    "단수": f"{item.level}단"
-                                })
-                            
-                            df_list = pd.DataFrame(list_data)
-
                             if HAS_REPORTLAB:
                                 buffer = BytesIO()
                                 c = canvas.Canvas(buffer, pagesize=A4)
@@ -821,36 +939,28 @@ if uploaded_file:
                                 c.setFont("Helvetica", 10)
                                 c.drawString(30, height - 70, f"Total Weight: {t.total_weight:,.0f} kg")
                                 c.drawString(30, height - 90, f"Box Count: {len(t.items)} ea")
-                                
                                 y = height - 130
                                 c.setFont("Helvetica-Bold", 10)
-                                header_str = "No.   Box Name      Zone(Pos)    Layer    Weight"
-                                c.drawString(30, y, header_str)
+                                c.drawString(30, y, "No.  Box Name        Size(WxDxH)         Weight")
                                 c.line(30, y-5, 550, y-5)
                                 y -= 20
                                 c.setFont("Helvetica", 10)
-                                
-                                for item_data in list_data:
+                                for idx, item in enumerate(t.items):
                                     if y < 50: 
                                         c.showPage()
                                         y = height - 50
-                                    zone_map = item_data['위치'].replace("앞", "Front").replace("뒤", "Rear").replace("좌", "L").replace("우", "R")
-                                    line_str = f"{item_data['순서']}.   {item_data['박스명']}      {zone_map}       {item_data['단수']}     {item_data['무게']}"
-                                    c.drawString(30, y, line_str)
+                                    c.drawString(30, y, f"{idx+1}.  {item.name}   {int(item.w)}x{int(item.d)}x{int(item.h)}   {int(item.weight)}kg")
                                     y -= 15
-                                
                                 c.save()
                                 buffer.seek(0)
-                                st.download_button("📄 현장용 리스트 인쇄 (PDF)", buffer, f"{t.name}_list.pdf", "application/pdf", key=f"pdf_{i}")
+                                st.download_button("📄 PDF 다운로드", buffer, f"{t.name}.pdf", "application/pdf", key=f"pdf_{i}")
                             
-                            with st.expander("📦 상세 적재 리스트 (펼치기)", expanded=True):
-                                st.dataframe(df_list, hide_index=True, use_container_width=True, height=400)
-                                
-                                order_str = " -> ".join([d['박스명'] for d in list_data])
-                                st.markdown("##### 🏗️ 적재 순서 (지게차 작업 순)")
-                                st.markdown(f'<div class="flow-text">{order_str}</div>', unsafe_allow_html=True)
+                            with st.expander("📦 상세 적재 리스트 (펼치기)", expanded=False):
+                                detail_df = pd.DataFrame([{"No": i+1, "박스명": b.name, "크기": f"{int(b.w)}x{int(b.d)}x{int(b.h)}", "무게": int(b.weight)} for i, b in enumerate(t.items)])
+                                st.dataframe(detail_df, hide_index=True, use_container_width=True, height=400)
 
                         with c_chart:
-                            st.plotly_chart(draw_truck_3d_animated(t), use_container_width=True)
+                            # [수정됨] draw_truck_3d_animated -> draw_truck_3d로 함수 이름 통일
+                            st.plotly_chart(draw_truck_3d(t, limit_count=None), use_container_width=True)
             else: st.warning("적재 가능한 차량을 찾지 못했습니다.")
     except Exception as e: st.error(f"오류 발생: {e}")
