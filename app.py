@@ -144,6 +144,27 @@ st.markdown("""
         font-weight: bold;
         margin: 0;
     }
+    
+    /* 무게 분포 4분면 스타일 */
+    .quadrant-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr 1fr;
+        gap: 5px;
+        text-align: center;
+        font-size: 14px;
+        font-weight: bold;
+        background-color: #f8f9fa;
+        padding: 5px;
+        border-radius: 5px;
+        border: 1px solid #ddd;
+    }
+    .q-cell {
+        padding: 5px;
+        background-color: white;
+        border-radius: 3px;
+        border: 1px solid #eee;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -214,7 +235,6 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on, mode):
         if not truck.items: return
         items_by_row = []
         sorted_items = sorted(truck.items, key=lambda x: x.y)
-        
         current_row = []
         if sorted_items:
             current_row_y = sorted_items[0].y
@@ -226,17 +246,13 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on, mode):
                 else:
                     current_row.append(item)
             items_by_row.append(current_row)
-        
         if len(items_by_row) < 2: return 
-
         row_heights = []
         for row in items_by_row:
             max_h = max(item.h for item in row)
             row_heights.append({'max_h': max_h, 'items': row, 'original_y': row[0].y})
-        
         row_heights.sort(key=lambda x: x['max_h'], reverse=True)
         target_y_positions = sorted([r['original_y'] for r in row_heights])
-        
         new_items = []
         for i, row_data in enumerate(row_heights):
             y_diff = target_y_positions[i] - row_data['original_y']
@@ -261,7 +277,6 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on, mode):
                 else:
                     current_row.append(item)
             items_by_row.append(current_row)
-            
         final_items = []
         for row in items_by_row:
             mounded_row = mound_sort_by_height(row)
@@ -296,11 +311,9 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on, mode):
         best_start_solution = None
         min_start_cost = float('inf')
         total_w = sum(i.weight for i in items_input)
-        
         for start_truck_name in TRUCK_DB:
             spec = TRUCK_DB[start_truck_name]
             if total_w > 15000 and spec['weight'] < 4000: continue
-
             t1 = Truck(start_truck_name, spec['w'], limit_h, spec['l'] - MARGIN_LENGTH, spec['weight'], spec['cost'], gap_mm, limit_level_on)
             packed_in_t1 = []
             for item in sorted_items:
@@ -308,13 +321,10 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on, mode):
                 nb.is_heavy = item.is_heavy
                 if t1.put_item(nb):
                     packed_in_t1.append(item)
-            
             if not t1.items: continue
-            
             packed_names = set(i.name for i in packed_in_t1)
             rem_items = [i for i in sorted_items if i.name not in packed_names]
             current_solution = [t1]
-            
             if rem_items:
                 rem_copy = rem_items[:]
                 while rem_copy:
@@ -342,14 +352,12 @@ def run_optimization(all_items, limit_h, gap_mm, limit_level_on, mode):
                         p_names = set(i.name for i in best_next.items)
                         rem_copy = [i for i in rem_copy if i.name not in p_names]
                     else: break
-            
             total_packed = sum(len(t.items) for t in current_solution)
             if total_packed < len(items_input): continue
             cost = sum(t.cost for t in current_solution)
             if cost < min_start_cost:
                 min_start_cost = cost
                 best_start_solution = current_solution
-                
         return best_start_solution
 
     final_solution_trucks = []
@@ -497,7 +505,7 @@ uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['x
 st.sidebar.divider()
 
 st.sidebar.subheader("⚙️ 적재 옵션 설정")
-# 파란색 문구 박스 삭제됨
+st.sidebar.info("비용이 비싸게 나온다면 '높이 제한'을 늘리고 '간격'을 해제해보세요.")
 
 # [모드 선택 옵션] - 문구 변경됨
 opt_mode = st.sidebar.radio(
@@ -594,67 +602,67 @@ if uploaded_file:
                     with tab:
                         t = trucks[i]
                         
-                        # [UI Layout] 정보(리스트 포함) 좌측(1) : 차트 우측(2)
-                        c_info, c_chart = st.columns([1, 2]) 
+                        # [UI Layout] 먼저 필요한 계산 수행
+                        truck_limit_vol = t.w * t.d * display_height 
+                        used_vol = sum([b.vol for b in t.items])
+                        vol_pct = min(1.0, used_vol / truck_limit_vol) if truck_limit_vol > 0 else 0
+                        weight_pct = min(1.0, t.total_weight / t.max_weight)
                         
-                        with c_info:
-                            # 1. 차량별 집계 테이블 (Summary Table)
-                            summary_df = pd.DataFrame({
+                        mid_y = t.d / 2; mid_x = t.w / 2  
+                        q_front_left = q_front_right = q_rear_left = q_rear_right = 0.0
+                        
+                        def calc_overlap(b_x1, b_x2, b_y1, b_y2, q_x1, q_x2, q_y1, q_y2):
+                            x_overlap = max(0, min(b_x2, q_x2) - max(b_x1, q_x1))
+                            y_overlap = max(0, min(b_y2, q_y2) - max(b_y1, q_y1))
+                            return x_overlap * y_overlap
+
+                        for item in t.items:
+                            b_x1, b_x2 = item.x, item.x + item.w
+                            b_y1, b_y2 = item.y, item.y + item.d
+                            if item.vol <= 0: continue
+                            box_area = item.w * item.d
+                            q_front_left += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, 0, mid_y) / box_area)
+                            q_front_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, 0, mid_y) / box_area)
+                            q_rear_left += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, mid_y, t.d) / box_area)
+                            q_rear_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d) / box_area)
+                        
+                        total_w = t.total_weight if t.total_weight > 0 else 1
+                        
+                        # [UI Row 1] 상단 가로형 정보 바 (집계 / 적재율 / 무게분포)
+                        # 컬럼 비율 조정: [집계(1) / 적재율(1) / 무게분포(1.5)]
+                        c_sum, c_vol, c_bal = st.columns([1.2, 1.5, 2.5])
+                        
+                        with c_sum:
+                            st.markdown("##### 📊 요약")
+                            st.dataframe(pd.DataFrame({
                                 "항목": ["박스 수", "적재 중량", "운송 비용"],
                                 "값": [f"{len(t.items)}개", f"{t.total_weight:,.0f} kg", f"{t.cost:,} 원"]
-                            })
-                            st.dataframe(summary_df, hide_index=True, use_container_width=True)
-
-                            # 2. 적재 리스트 상세 (Expander)
-                            with st.expander("📦 적재 리스트 확인 (클릭)"):
-                                detail_df = pd.DataFrame([{"No": i+1, "박스명": b.name, "크기": f"{int(b.w)}x{int(b.d)}x{int(b.h)}", "무게": int(b.weight)} for i, b in enumerate(t.items)])
-                                st.dataframe(detail_df, hide_index=True, use_container_width=True)
-
-                            st.divider()
-
-                            # 3. 적재율 그래프 (Progress Bars)
-                            truck_limit_vol = t.w * t.d * display_height 
-                            used_vol = sum([b.vol for b in t.items])
-                            vol_pct = min(1.0, used_vol / truck_limit_vol) if truck_limit_vol > 0 else 0
-                            weight_pct = min(1.0, t.total_weight / t.max_weight)
-
-                            st.progress(vol_pct, text=f"📏 체적 적재율 ({display_height/1000:.1f}m기준): {vol_pct*100:.1f}%")
-                            st.progress(weight_pct, text=f"⚖️ 중량 적재율: {weight_pct*100:.1f}%")
+                            }), hide_index=True, use_container_width=True)
                             
-                            st.divider()
-
-                            # 4. 하중 분포 (Weight Distribution)
-                            mid_y = t.d / 2; mid_x = t.w / 2  
-                            q_front_left = q_front_right = q_rear_left = q_rear_right = 0.0
+                        with c_vol:
+                            st.markdown("##### 📉 적재율")
+                            st.progress(vol_pct, text=f"체적: {vol_pct*100:.1f}%")
+                            st.progress(weight_pct, text=f"중량: {weight_pct*100:.1f}%")
                             
-                            def calc_overlap(b_x1, b_x2, b_y1, b_y2, q_x1, q_x2, q_y1, q_y2):
-                                x_overlap = max(0, min(b_x2, q_x2) - max(b_x1, q_x1))
-                                y_overlap = max(0, min(b_y2, q_y2) - max(b_y1, q_y1))
-                                return x_overlap * y_overlap
+                        with c_bal:
+                            st.markdown("##### ⚖️ 무게 분포")
+                            # 2x2 그리드 HTML 커스텀
+                            st.markdown(f"""
+                            <div class="quadrant-grid">
+                                <div class="q-cell">FL (앞-좌)<br>{q_front_left/total_w*100:.0f}%<br>({int(q_front_left)}kg)</div>
+                                <div class="q-cell">FR (앞-우)<br>{q_front_right/total_w*100:.0f}%<br>({int(q_front_right)}kg)</div>
+                                <div class="q-cell">RL (뒤-좌)<br>{q_rear_left/total_w*100:.0f}%<br>({int(q_rear_left)}kg)</div>
+                                <div class="q-cell">RR (뒤-우)<br>{q_rear_right/total_w*100:.0f}%<br>({int(q_rear_right)}kg)</div>
+                            </div>
+                            """, unsafe_allow_html=True)
 
-                            for item in t.items:
-                                b_x1, b_x2 = item.x, item.x + item.w
-                                b_y1, b_y2 = item.y, item.y + item.d
-                                if item.vol <= 0: continue
-                                box_area = item.w * item.d
-                                q_front_left += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, 0, mid_y) / box_area)
-                                q_front_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, 0, mid_y) / box_area)
-                                q_rear_left += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, mid_x, t.w, mid_y, t.d) / box_area)
-                                q_rear_right += item.weight * (calc_overlap(b_x1, b_x2, b_y1, b_y2, 0, mid_x, mid_y, t.d) / box_area)
-                            
-                            total_w = t.total_weight if t.total_weight > 0 else 1
-                            
-                            st.markdown("##### ⚖️ 무게 분포 (4분면)")
-                            c_q1, c_q2 = st.columns(2)
-                            with c_q1: st.metric("앞-좌", f"{q_front_left/total_w*100:.0f}%", f"{int(q_front_left)}kg", delta_color="off")
-                            with c_q2: st.metric("앞-우", f"{q_front_right/total_w*100:.0f}%", f"{int(q_front_right)}kg", delta_color="off")
-                            c_q3, c_q4 = st.columns(2)
-                            with c_q3: st.metric("뒤-좌", f"{q_rear_left/total_w*100:.0f}%", f"{int(q_rear_left)}kg", delta_color="off")
-                            with c_q4: st.metric("뒤-우", f"{q_rear_right/total_w*100:.0f}%", f"{int(q_rear_right)}kg", delta_color="off")
-
-                            st.divider()
-
-                            # 5. PDF 다운로드
+                        st.divider()
+                        
+                        # [UI Row 2] 좌측: 리스트(Expander) / 우측: 3D 차트
+                        c_list, c_chart = st.columns([1, 2.5]) 
+                        
+                        with c_list:
+                            # PDF 다운로드 버튼
                             if HAS_REPORTLAB:
                                 buffer = BytesIO()
                                 c = canvas.Canvas(buffer, pagesize=A4)
@@ -679,9 +687,15 @@ if uploaded_file:
                                 c.save()
                                 buffer.seek(0)
                                 st.download_button("📄 PDF 다운로드", buffer, f"{t.name}.pdf", "application/pdf", key=f"pdf_{i}")
+                            
+                            st.write("") # 간격
+                            
+                            # 적재 리스트 Expander
+                            with st.expander("📦 상세 적재 리스트 보기", expanded=False):
+                                detail_df = pd.DataFrame([{"No": i+1, "박스명": b.name, "크기": f"{int(b.w)}x{int(b.d)}x{int(b.h)}", "무게": int(b.weight)} for i, b in enumerate(t.items)])
+                                st.dataframe(detail_df, hide_index=True, use_container_width=True, height=400)
 
                         with c_chart:
-                            # limit_count 없이 전체 그리기
                             st.plotly_chart(draw_truck_3d(t, limit_count=None), use_container_width=True)
             else: st.warning("적재 가능한 차량을 찾지 못했습니다.")
     except Exception as e: st.error(f"오류 발생: {e}")
