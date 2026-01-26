@@ -129,6 +129,22 @@ st.markdown("""
     /* 탭 선택 시 색상 변경 (빨강 계열 #FF4B4B) */
     .stTabs [aria-selected="true"] { background-color: #FF4B4B !important; color: white !important; }
     
+    /* 하이라이트 박스 */
+    .highlight-box {
+        background-color: #e6fffa;
+        border: 2px solid #38b2ac;
+        border-radius: 10px;
+        padding: 15px;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    .highlight-text {
+        color: #234e52;
+        font-size: 20px;
+        font-weight: bold;
+        margin: 0;
+    }
+
     /* 통합 대시보드 카드 스타일 */
     .dashboard-card {
         background-color: #ffffff;
@@ -182,7 +198,7 @@ st.markdown("""
         overflow: hidden;
     }
     .progress-fill {
-        background-color: #3b82f6; /* 파란색 통일 */
+        background-color: #FF4B4B; /* 빨간색 통일 */
         height: 100%;
         border-radius: 10px;
     }
@@ -205,7 +221,7 @@ st.markdown("""
         align-items: center;
         font-size: 13px;
         font-weight: bold;
-        color: #444;
+        color: #000000;
         background-color: white;
     }
     .q-cell:nth-child(1) { border-right: 1px solid #ddd; border-bottom: 1px solid #ddd; border-top-left-radius: 5px;}
@@ -602,7 +618,7 @@ uploaded_file = st.sidebar.file_uploader("엑셀/CSV 파일 업로드", type=['x
 st.sidebar.divider()
 
 st.sidebar.subheader("⚙️ 적재 옵션 설정")
-st.sidebar.info("시뮬레이션 결과가 마음에 들지 않는다면 아래의 옵션들을 변경해서 재 실행해보세요.")
+st.sidebar.info("💡 원하는 배차 결과가 나오지 않았다면, 아래 옵션을 조정하여 재실행해 보세요.")
 
 # [모드 선택]
 opt_mode = st.sidebar.radio(
@@ -760,7 +776,7 @@ if uploaded_file:
                             </div>
                             """, unsafe_allow_html=True)
                         
-                        # 2. 적재율 (HTML Custom Progress Bar - 파란색 통일)
+                        # 2. 적재율 (HTML Custom Progress Bar - 빨간색 통일 #FF4B4B)
                         with c2:
                             vol_w = vol_pct * 100
                             wgt_w = weight_pct * 100
@@ -770,26 +786,35 @@ if uploaded_file:
                                 <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
                                     <div class="custom-progress-container">
                                         <div class="progress-label"><span>체적</span><span>{vol_w:.1f}%</span></div>
-                                        <div class="progress-bg"><div class="progress-fill" style="width: {vol_w}%; background-color: #3b82f6;"></div></div>
+                                        <div class="progress-bg"><div class="progress-fill" style="width: {vol_w}%; background-color: #FF4B4B;"></div></div>
                                     </div>
                                     <div class="custom-progress-container">
                                         <div class="progress-label"><span>중량</span><span>{wgt_w:.1f}%</span></div>
-                                        <div class="progress-bg"><div class="progress-fill" style="width: {wgt_w}%; background-color: #3b82f6;"></div></div>
+                                        <div class="progress-bg"><div class="progress-fill" style="width: {wgt_w}%; background-color: #FF4B4B;"></div></div>
                                     </div>
                                 </div>
                             </div>
                             """, unsafe_allow_html=True)
 
-                        # 3. 무게 분포 (2x2 Grid with Cross Line)
+                        # 3. 무게 분포 (2x2 Grid, 33% 초과시 경고색)
                         with c3:
+                            # 33% 초과 체크용 함수
+                            def get_color(val):
+                                return "#FF4B4B" if val > 33 else "#000000"
+
+                            p_fl = q_front_left/total_w*100
+                            p_fr = q_front_right/total_w*100
+                            p_rl = q_rear_left/total_w*100
+                            p_rr = q_rear_right/total_w*100
+
                             st.markdown(f"""
                             <div class="dashboard-card">
                                 <span class="card-title">⚖️ 무게 분포</span>
                                 <div class="quadrant-box">
-                                    <div class="q-cell">앞-좌<br><span style="color:#3b82f6;">{q_front_left/total_w*100:.0f}%</span></div>
-                                    <div class="q-cell">앞-우<br><span style="color:#3b82f6;">{q_front_right/total_w*100:.0f}%</span></div>
-                                    <div class="q-cell">뒤-좌<br><span style="color:#3b82f6;">{q_rear_left/total_w*100:.0f}%</span></div>
-                                    <div class="q-cell">뒤-우<br><span style="color:#3b82f6;">{q_rear_right/total_w*100:.0f}%</span></div>
+                                    <div class="q-cell">FL<br><span style="color:{get_color(p_fl)};">{p_fl:.0f}%</span></div>
+                                    <div class="q-cell">FR<br><span style="color:{get_color(p_fr)};">{p_fr:.0f}%</span></div>
+                                    <div class="q-cell">RL<br><span style="color:{get_color(p_rl)};">{p_rl:.0f}%</span></div>
+                                    <div class="q-cell">RR<br><span style="color:{get_color(p_rr)};">{p_rr:.0f}%</span></div>
                                 </div>
                             </div>
                             """, unsafe_allow_html=True)
