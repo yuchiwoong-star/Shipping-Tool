@@ -671,21 +671,23 @@ if uploaded_file:
         st.dataframe(df_truck, use_container_width=True, hide_index=True, column_config={c: st.column_config.Column(width="medium") for c in df_truck.columns})
 
         if st.button("최적 배차 실행", type="primary"):
-            with st.status(f"🚀 {opt_mode} 모드로 분석 중입니다...", expanded=True) as status:
-                st.write("1. 데이터를 읽고 변환하고 있습니다...")
+            # ================= [수정된 부분 시작] =================
+            # 기존의 st.status 대신 자동으로 사라지는 st.spinner 사용
+            with st.spinner(f"🚀 {opt_mode} 모드로 분석 중입니다..."):
                 time.sleep(0.1) 
                 
                 items = load_data(df)
                 if not items:
                     st.error("데이터 변환 실패.")
-                    status.update(label="오류 발생", state="error")
                 else:
                     time.sleep(0.1) 
                     trucks = run_optimization(items, opt_height, gap_mm, max_layer_val, mode=mode_key)
                     st.session_state['optimized_result'] = trucks
                     st.session_state['calc_opt_height'] = opt_height
                     time.sleep(0.2)
-                    status.update(label="배차 분석 완료!", state="complete", expanded=False)
+                    # 작업이 완료되면 스피너는 자동으로 사라지며,
+                    # '배차 분석 완료!' 박스는 더 이상 남지 않습니다.
+            # ================= [수정된 부분 끝] =================
 
         if 'optimized_result' in st.session_state:
             trucks = st.session_state['optimized_result']
@@ -867,7 +869,7 @@ if uploaded_file:
                                 c.drawString(30, height - 90, f"Box Count: {len(t.items)} ea")
                                 y = height - 130
                                 c.setFont("Helvetica-Bold", 10)
-                                c.drawString(30, y, "No.  Box Name        Size(WxDxH)         Weight")
+                                c.drawString(30, y, "No.  Box Name         Size(WxDxH)          Weight")
                                 c.line(30, y-5, 550, y-5)
                                 y -= 20
                                 c.setFont("Helvetica", 10)
