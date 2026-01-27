@@ -5,6 +5,7 @@ import numpy as np
 import math
 import uuid
 import time
+import random  # [추가] 무작위 섞기를 위한 라이브러리
 from itertools import groupby
 from io import BytesIO
 from collections import deque
@@ -415,8 +416,17 @@ def run_optimization(all_items, limit_h, gap_mm, max_layer_val, mode):
         for p in truck.pivots: new_pivots.append([p[0] + offset_x, p[1], p[2]])
         truck.pivots = new_pivots
 
-    def solve_allocation(items_input, sort_func):
+    # [수정] 다중 시도(Multi-Start)를 위한 핵심 배차 로직 함수 분리
+    def solve_allocation(items_input, sort_func, is_random=False):
         sorted_items = sort_func(items_input)
+        
+        # 무작위성이 켜져 있다면, 정렬된 순서를 약간 흔들어 줌 (지역 최적해 탈출)
+        if is_random:
+            # 30% 확률로 인접한 아이템과 순서 바꾸기 (기본 큰 틀은 유지하되 변칙 부여)
+            for i in range(len(sorted_items) - 1):
+                if random.random() < 0.3:
+                    sorted_items[i], sorted_items[i+1] = sorted_items[i+1], sorted_items[i]
+
         best_start_solution = None
         min_start_cost = float('inf')
         total_w = sum(i.weight for i in items_input)
@@ -442,7 +452,12 @@ def run_optimization(all_items, limit_h, gap_mm, max_layer_val, mode):
             if rem_items:
                 rem_copy = rem_items[:]
                 while rem_copy:
-                    rem_copy = sort_func(rem_copy)
+                    if not is_random:
+                        rem_copy = sort_func(rem_copy)
+                    # 랜덤 모드일 때는 남은 아이템 정렬 시에도 약간의 랜덤성 부여 가능하나, 성능상 여기서는 정렬 유지
+                    else:
+                        rem_copy = sort_func(rem_copy)
+
                     best_next = None
                     max_eff = -1.0
                     rem_w = sum(i.weight for i in rem_copy)
@@ -476,11 +491,33 @@ def run_optimization(all_items, limit_h, gap_mm, max_layer_val, mode):
                 
         return best_start_solution
 
-    final_solution_trucks = []
-    if mode == 'length':
-        final_solution_trucks = solve_allocation(all_items, sort_length_mode)
+    # [수정] 메인 최적화 실행부 (Multi-Start Loop 적용)
+    selected_sort_func = sort_length_mode if mode == 'length' else sort_area_mode
+    
+    # 1. 정석대로 1회 실행 (기본 결과)
+    best_trucks = solve_allocation(all_items, selected_sort_func, is_random=False)
+    if best_trucks:
+        min_cost = sum(t.cost for t in best_trucks)
     else:
-        final_solution_trucks = solve_allocation(all_items, sort_area_mode)
+        min_cost = float('inf')
+        best_trucks = []
+
+    # 2. 랜덤 변주를 주어 30회 추가 실행 (더 좋은 결과 찾기)
+    # 시간이 조금 더 걸리지만, 비용 절감 효과가 큼
+    for _ in range(30):
+        candidate_trucks = solve_allocation(all_items, selected_sort_func, is_random=True)
+        if candidate_trucks:
+            cost = sum(t.cost for t in candidate_trucks)
+            
+            # 비용이 더 저렴하거나, 비용은 같은데 차량 수가 적으면 교체
+            if cost < min_cost:
+                min_cost = cost
+                best_trucks = candidate_trucks
+            elif cost == min_cost:
+                if len(candidate_trucks) < len(best_trucks):
+                    best_trucks = candidate_trucks
+
+    final_solution_trucks = best_trucks
 
     final_output = []
     if final_solution_trucks:
@@ -671,8 +708,7 @@ if uploaded_file:
         st.dataframe(df_truck, use_container_width=True, hide_index=True, column_config={c: st.column_config.Column(width="medium") for c in df_truck.columns})
 
         if st.button("최적 배차 실행", type="primary"):
-            # ================= [수정된 부분 시작] =================
-            # 기존의 st.status 대신 자동으로 사라지는 st.spinner 사용
+            # 기존 st.status 제거 후 spinner 적용 및 자동 사라짐 구현
             with st.spinner(f"🚀 {opt_mode} 모드로 분석 중입니다..."):
                 time.sleep(0.1) 
                 
@@ -685,9 +721,6 @@ if uploaded_file:
                     st.session_state['optimized_result'] = trucks
                     st.session_state['calc_opt_height'] = opt_height
                     time.sleep(0.2)
-                    # 작업이 완료되면 스피너는 자동으로 사라지며,
-                    # '배차 분석 완료!' 박스는 더 이상 남지 않습니다.
-            # ================= [수정된 부분 끝] =================
 
         if 'optimized_result' in st.session_state:
             trucks = st.session_state['optimized_result']
